@@ -57,7 +57,7 @@ Uses OpenAL loopback for audio capture with microsecond-precision timestamp trac
 
 why? because Flashback usually causes visual corruption in the record-able mod's recordings and Replay is kinda similar (Shout-out to each respective mods authors)
 
-**Also High quality, Fps, Resolution, The Replay buffer feature and long recording times**
+**Also High quality, Fps, Resolution, ~~The Replay buffer feature~~(removed in V1-0.04) and long recording times**
 
 **Eat-up a lot of Memory, Cpu and Ram(So better be careful!)**
 
