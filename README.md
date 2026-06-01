@@ -64,5 +64,3 @@ why? because Flashback usually causes visual corruption in the record-able mod's
 # Disclaimer⚠️:
 ---
 For complete clarity, this project was and is AI assisted.
-
-<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/6Mz6RwHReW4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
