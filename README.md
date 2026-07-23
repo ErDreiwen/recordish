@@ -1,66 +1,81 @@
-## Record-able
----
----
----
-A lightweight screen recording mod for Fabric 1.21.11+ that lets you capture gameplay.
+# Record-able for Forge 1.8.9
 
-what does it do?
+This is the Forge 1.8.9 port of
+[Record-able](https://github.com/JoEusebe/record-able), an in-game recorder
+that writes standard video files with game audio, optional microphone audio,
+instant replay, automatic clips, overlays, filters, watermarks, and privacy
+censors.
 
-Record-able captures video and audio directly from your Minecraft session. No external software needed, no performance tanks. Uses on-demand FFmpeg downloads instead of bundling binaries.
+The port targets:
 
-## Key features!
----
-- Hardware acceleration support (NVENC, AMF, QuickSync)
+- Minecraft 1.8.9
+- Forge 11.15.1.2318
+- Java 8 at runtime
 
-- Two container formats(For now) (MP4, MKV)
+The original MIT license and author attribution are retained.
 
-- Customizable video quality and bitrate settings
+## Install and record
 
-- Audio capture from game
+1. Install Forge 1.8.9 (`11.15.1.2318`).
+2. Put the finished `recordable-1.0.0-forge-1.8.9.jar` in the instance's
+   `mods` folder.
+3. Launch Minecraft, click **Record-able** on the main menu, open **Storage**,
+   and use **Download FFmpeg** once. A custom FFmpeg executable can be
+   selected instead.
+4. Join a world or server and press `-` to start or stop recording.
 
-- Max file size limits with auto-stop
+Recordings go to the instance's `recordings` folder by default. The output
+folder is configurable. Auto-record-on-world-join is enabled by default with a
+two-second delay and can be disabled from the Recording settings.
 
-- Customizable recording overlay (5 positions, scalable from 50% to 200%)
+Default controls:
 
-- Built-in video collection browser
+| Action | Key |
+| --- | --- |
+| Start/stop recording | `-` |
+| Pause/resume | `=` |
+| Settings | `F9` |
+| Video collection | `F12` |
+| Microphone push-to-talk | `V` |
 
+Replay saving, bookmarks, and censor controls are available as normal
+Minecraft key bindings but are unbound by default.
 
-## How does FFmpeg work?
----
-First launch will prompt you to download FFmpeg. The mod handles this automatically from trusted mirrors (gyan.dev, johnvansickle.com, evermeet.cx) with SHA-256/MD5 integrity verification. One-time setup, then you're good to go.
+For BedWars kill clips, enable **Auto clips**, **Player-kill clips**, and
+**Kill montage**. The Forge port attributes direct melee hits, recent aimed
+swings, and locally fired arrows while keeping the montage buffer combat-armed
+instead of continuously writing full-resolution raw frames.
 
-## System requirements(because ofc🤷)
----
-Fabric 1.21.11 or above
+## Capture notes
 
-Java 21
+Game audio is captured from Minecraft's OpenAL mix, so it does not require
+Stereo Mix. Microphone capture uses Java Sound. If another replay mod needs
+OpenAL ownership, the optional replay compatibility bridge can yield the
+device and fall back gracefully.
 
-FFmpeg (downloaded on first use when prompted)
+The capture hook runs after Minecraft finishes the final HUD frame. Persistent
+black frames automatically rotate among framebuffer, back-buffer, and texture
+readback paths for OptiFine/shader compatibility. Hardware H.264 encoders are
+preflighted and fall back to software x264 when unavailable.
 
-## Controls🎮
----
-Start/stop recording with a keybind (configurable)
+## Development
 
-Access settings and video collection from mod menu
+Gradle itself needs a modern host JDK; compilation and game launch use the
+Java 8 toolchain.
 
-Overlay shows recording status and duration in real-time
+```powershell
+.\gradlew.bat clean build
+.\gradlew.bat runClientCompat
+```
 
-## Technical details for the power-users!
----
-Uses OpenAL loopback for audio capture with microsecond-precision timestamp tracking to prevent A/V drift. Video encoder runs async to avoid frame drops. Supports custom FFmpeg parameters if you want full control.
+The remapped distributable JAR is written to `build/libs`.
 
-## Known Incompatibilities
+An FFmpeg-backed pipeline smoke test is also included:
 
-- Flashback
-- Replay Mod
-- and (probably) any other recording mod
+```powershell
+.\gradlew.bat pipelineSmokeTest `
+  -PrecordableSmokeFfmpeg="C:\path\to\ffmpeg.exe"
+```
 
-why? because Flashback usually causes visual corruption in the record-able mod's recordings and Replay is kinda similar (Shout-out to each respective mods authors)
-
-**Also High quality, Fps, Resolution, ~~The Replay buffer feature~~(removed in V1-0.04) and long recording times**
-
-**Eat-up a lot of Memory, Cpu and Ram(So better be careful!)**
-
-# Disclaimer⚠️:
----
-For complete clarity, this project was and is AI assisted.
+See [docs/PARITY.md](docs/PARITY.md) for the Forge adaptation and verification
+matrix, and [UPSTREAM.md](UPSTREAM.md) for provenance.

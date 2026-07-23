@@ -1,0 +1,10 @@
+key.categories.recordable.main=Record-able
+key.recordable.toggle_recording=Start / Stop Recording
+key.recordable.pause_resume=Pause / Resume Recording
+key.recordable.open_settings=Open Record-able Settings
+key.recordable.open_video_collection=Open Recording Collection
+key.recordable.add_bookmark=Add Recording Bookmark
+key.recordable.push_to_talk=Microphone Push-to-Talk
+key.recordable.save_replay_buffer=Save Replay Buffer
+key.recordable.toggle_censor_overlay=Toggle Censor Overlay
+key.recordable.open_censor_editor=Open Censor Editor

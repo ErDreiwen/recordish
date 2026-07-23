@@ -1,0 +1,32 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+.vscode
+
+# gradle
+build
+.gradle
+gradle-user-home
+
+# other
+eclipse
+run
+logs
+.upstream-v1.0.08
+*.zip
+forge-*-changelog.txt
+record-able-*-sources.jar
+recordings
+clips
+config/recordable.json
