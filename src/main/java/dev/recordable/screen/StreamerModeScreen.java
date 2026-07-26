@@ -627,6 +627,7 @@ public final class StreamerModeScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         RecordableConfig config = RecordableConfig.get();
         if (config == null) {
             super.drawScreen(mouseX, mouseY, partialTicks);

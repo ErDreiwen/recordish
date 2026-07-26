@@ -5,6 +5,11 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+
+import java.nio.FloatBuffer;
 
 /**
  * Compact main-menu entry point for Record-able.
@@ -17,6 +22,26 @@ public final class RecordableHomeButton extends GuiButton {
     public static final int SIZE = 20;
     public static final String DEFAULT_TOOLTIP =
             "Video Collection (Record-able)";
+    private static final String[] CLAPPER_MASK = {
+            ".......###..",
+            "....###.....",
+            ".###........",
+            "#...........",
+            "##.#.#.#.#.#",
+            "############",
+            "############",
+            "##..#.#...##",
+            "############",
+            "##.#...#..##",
+            "############",
+            "############"
+    };
+    /*
+     * LWJGL 2 validates glGetFloat buffers against the command's maximum
+     * return size (16), even though GL_CURRENT_COLOR writes only four values.
+     */
+    private static final FloatBuffer COLOR_STATE =
+            BufferUtils.createFloatBuffer(16);
 
     private final String tooltipText;
 
@@ -43,17 +68,14 @@ public final class RecordableHomeButton extends GuiButton {
             return;
         }
 
-        boolean hoveredNow = isHoveredAt(mouseX, mouseY);
-        int outline = enabled ? 0xFF181818 : 0xFF444444;
         int light = !enabled
                 ? 0xFF777777
-                : (hoveredNow ? 0xFFFFFFFF : 0xFFE2E2E2);
-        int face = !enabled
-                ? 0xFF666666
-                : (hoveredNow ? 0xFFE8F3FF : 0xFFBFC9D2);
-        int stripe = enabled ? 0xFF30343A : 0xFF505050;
+                : 0xFFFFFFFF;
+        int dark = !enabled
+                ? 0xFF1D1D1D
+                : 0xFF3F3F3F;
 
-        drawClapperboard(xPosition, yPosition, outline, light, face, stripe);
+        drawClapperboard(xPosition, yPosition, light, dark);
     }
 
     /**
@@ -131,67 +153,97 @@ public final class RecordableHomeButton extends GuiButton {
     private static void drawClapperboard(
             int buttonX,
             int buttonY,
-            int outline,
             int light,
-            int face,
-            int stripe) {
-        int left = buttonX + 4;
-        int right = buttonX + 16;
+            int dark) {
+        /*
+         * The 26.2 emoji glyph occupies a 12x12 framebuffer-pixel mask at GUI
+         * scale 2: a six-logical-pixel footprint plus a one-pixel text shadow.
+         * Half-scale drawing preserves that exact silhouette on the legacy
+         * renderer instead of turning it into a coarse floppy-disk shape.
+         */
+        int left = (buttonX + 7) * 2;
+        int top = (buttonY + 7) * 2;
+        boolean blendEnabled =
+                GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean textureEnabled =
+                GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+        boolean alphaEnabled =
+                GL11.glIsEnabled(GL11.GL_ALPHA_TEST);
+        COLOR_STATE.clear();
+        GL11.glGetFloat(
+                GL11.GL_CURRENT_COLOR,
+                COLOR_STATE);
+        float previousRed = COLOR_STATE.get(0);
+        float previousGreen = COLOR_STATE.get(1);
+        float previousBlue = COLOR_STATE.get(2);
+        float previousAlpha = COLOR_STATE.get(3);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.scale(0.5F, 0.5F, 1.0F);
+            drawMask(left + 1, top + 1, dark);
+            drawMask(left, top, light);
+        } finally {
+            GlStateManager.popMatrix();
+            restoreCapability(
+                    GL11.GL_TEXTURE_2D,
+                    textureEnabled);
+            restoreCapability(
+                    GL11.GL_BLEND,
+                    blendEnabled);
+            restoreCapability(
+                    GL11.GL_ALPHA_TEST,
+                    alphaEnabled);
+            GlStateManager.color(
+                    previousRed,
+                    previousGreen,
+                    previousBlue,
+                    previousAlpha);
+        }
+    }
 
-        // Board body.
-        Gui.drawRect(left, buttonY + 9, right, buttonY + 16, outline);
-        Gui.drawRect(
-                left + 1,
-                buttonY + 10,
-                right - 1,
-                buttonY + 15,
-                face);
-        Gui.drawRect(
-                left + 1,
-                buttonY + 10,
-                right - 1,
-                buttonY + 11,
-                stripe);
+    private static void drawMask(
+            int left,
+            int top,
+            int color) {
+        for (int row = 0; row < CLAPPER_MASK.length; row++) {
+            String pixels = CLAPPER_MASK[row];
+            for (int column = 0;
+                    column < pixels.length();
+                    column++) {
+                if (pixels.charAt(column) != '#') {
+                    continue;
+                }
+                Gui.drawRect(
+                        left + column,
+                        top + row,
+                        left + column + 1,
+                        top + row + 1,
+                        color);
+            }
+        }
+    }
 
-        // Hinged top slate.
-        Gui.drawRect(
-                left - 1,
-                buttonY + 4,
-                right + 1,
-                buttonY + 9,
-                outline);
-        Gui.drawRect(
-                left,
-                buttonY + 5,
-                right,
-                buttonY + 8,
-                light);
-        Gui.drawRect(
-                left + 2,
-                buttonY + 5,
-                left + 4,
-                buttonY + 8,
-                stripe);
-        Gui.drawRect(
-                left + 7,
-                buttonY + 5,
-                left + 9,
-                buttonY + 8,
-                stripe);
-        Gui.drawRect(
-                left + 11,
-                buttonY + 5,
-                right,
-                buttonY + 8,
-                stripe);
-
-        // Hinge pin and a small recording mark.
-        Gui.drawRect(left, buttonY + 7, left + 2, buttonY + 10, outline);
-        Gui.drawRect(
-                right - 4,
-                buttonY + 12,
-                right - 2,
-                buttonY + 14,
-                0xFFE05252);
+    private static void restoreCapability(
+            int capability,
+            boolean enabled) {
+        if (capability == GL11.GL_TEXTURE_2D) {
+            if (enabled) {
+                GlStateManager.enableTexture2D();
+            } else {
+                GlStateManager.disableTexture2D();
+            }
+        } else if (capability == GL11.GL_BLEND) {
+            if (enabled) {
+                GlStateManager.enableBlend();
+            } else {
+                GlStateManager.disableBlend();
+            }
+        } else if (capability == GL11.GL_ALPHA_TEST) {
+            if (enabled) {
+                GlStateManager.enableAlpha();
+            } else {
+                GlStateManager.disableAlpha();
+            }
+        }
     }
 }

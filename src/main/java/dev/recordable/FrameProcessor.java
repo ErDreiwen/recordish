@@ -90,6 +90,7 @@ public final class FrameProcessor {
         } finally {
             graphics.dispose();
         }
+        drawCensorLabels(pixels, width, height, config);
     }
 
     private void applyFilters(byte[] pixels, int width, int height, RecordableConfig config) {
@@ -170,15 +171,53 @@ public final class FrameProcessor {
                 graphics.setColor(start);
             }
             graphics.fillRect(x, y, w, h);
-            if (region.showLabel && region.label != null && !region.label.trim().isEmpty()) {
-                int fontSize = Math.max(10, Math.min(36, h / 3));
-                graphics.setFont(new Font("SansSerif", Font.BOLD, fontSize));
-                graphics.setColor(new Color(region.textColor | 0xFF000000, true));
-                FontMetrics metrics = graphics.getFontMetrics();
-                int textX = x + Math.max(4, (w - metrics.stringWidth(region.label)) / 2);
-                int textY = y + Math.max(metrics.getAscent(), (h + metrics.getAscent()) / 2);
-                graphics.drawString(region.label, textX, textY);
+        }
+    }
+
+    private static void drawCensorLabels(
+            byte[] pixels,
+            int frameWidth,
+            int frameHeight,
+            RecordableConfig config) {
+        for (CensorRegion region : config.censorRegions) {
+            if (region == null
+                    || !region.enabled
+                    || !region.showLabel
+                    || region.label == null
+                    || region.label.trim().isEmpty()) {
+                continue;
             }
+            int x = (int) Math.round(region.x * frameWidth);
+            int y = (int) Math.round(region.y * frameHeight);
+            int width = Math.max(
+                1,
+                (int) Math.round(region.width * frameWidth));
+            int height = Math.max(
+                1,
+                (int) Math.round(region.height * frameHeight));
+            String label = region.label.trim();
+            int baseWidth = CensorFont.textWidth(label);
+            if (baseWidth <= 0) {
+                continue;
+            }
+            int scale = Math.min(
+                (int) Math.floor(width * 0.85D / baseWidth),
+                (int) Math.floor(
+                    height * 0.60D / CensorFont.GLYPH_H));
+            if (scale < 1) {
+                continue;
+            }
+            int textWidth = baseWidth * scale;
+            int textHeight = CensorFont.GLYPH_H * scale;
+            CensorFont.drawText(
+                pixels,
+                frameWidth,
+                frameHeight,
+                x + (width - textWidth) / 2,
+                y + (height - textHeight) / 2,
+                label,
+                region.textColor & 0xFFFFFF,
+                scale);
         }
     }
 

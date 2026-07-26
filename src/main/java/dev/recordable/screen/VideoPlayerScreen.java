@@ -2,14 +2,13 @@ package dev.recordable.screen;
 
 import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableMod;
-import dev.recordable.theme.ThemeColors;
-import dev.recordable.theme.ThemeEngine;
-import dev.recordable.theme.ThemedButton;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * The intentionally simple V1-0.09 video player hand-off screen.
@@ -24,10 +23,17 @@ public final class VideoPlayerScreen extends GuiScreen {
     private static final int BUTTON_BACK = 3;
     private static final int BUTTON_WIDTH = 200;
     private static final int BUTTON_HEIGHT = 20;
+    private static final String ANDROID_HELP =
+            "Not available on Android. Recordings are auto-saved to your "
+                    + "gallery (Movies/Record-able) - open them from your "
+                    + "Gallery or Files app.";
 
     private final File videoFile;
     private final GuiScreen parent;
     private String errorMessage;
+    private GuiButton openVideoButton;
+    private GuiButton openFolderButton;
+    private boolean androidRuntime;
 
     public VideoPlayerScreen(Path videoPath, GuiScreen parent) {
         this.videoFile = videoPath.toFile();
@@ -39,25 +45,36 @@ public final class VideoPlayerScreen extends GuiScreen {
 
     @Override
     public void initGui() {
-        ThemeEngine.get().loadFromConfig();
         buttonList.clear();
         int centerX = width / 2;
         int y = height / 2 + 20;
-        buttonList.add(new ThemedButton(
+        androidRuntime = isAndroidRuntime();
+
+        openVideoButton = new GuiButton(
                 BUTTON_OPEN,
                 centerX - BUTTON_WIDTH / 2,
                 y,
                 BUTTON_WIDTH,
                 BUTTON_HEIGHT,
-                "\u25B6 Open Video"));
-        buttonList.add(new ThemedButton(
+                androidRuntime
+                        ? "Open Video (Not available on Android)"
+                        : "\u25B6 Open Video");
+        openVideoButton.enabled = !androidRuntime;
+        buttonList.add(openVideoButton);
+
+        openFolderButton = new GuiButton(
                 BUTTON_FOLDER,
                 centerX - BUTTON_WIDTH / 2,
                 y + 30,
                 BUTTON_WIDTH,
                 BUTTON_HEIGHT,
-                "Open Recordings Folder"));
-        buttonList.add(new ThemedButton(
+                androidRuntime
+                        ? "Open Folder (Not available on Android)"
+                        : "\u25A3 Open Recordings Folder");
+        openFolderButton.enabled = !androidRuntime;
+        buttonList.add(openFolderButton);
+
+        buttonList.add(new GuiButton(
                 BUTTON_BACK,
                 centerX - BUTTON_WIDTH / 2,
                 y + 60,
@@ -98,14 +115,14 @@ public final class VideoPlayerScreen extends GuiScreen {
             int mouseY,
             float partialTicks) {
         drawDefaultBackground();
-        ThemeColors colors = ThemeEngine.get().colors();
+        dev.recordable.theme.ThemedPanel.drawMenuBackdrop(width, height);
 
         drawCenteredString(
                 fontRendererObj,
                 "\u25B6 Video Player",
                 width / 2,
                 40,
-                colors.headerText);
+                0xFFFFFFFF);
         drawCenteredString(
                 fontRendererObj,
                 fontRendererObj.trimStringToWidth(
@@ -113,7 +130,7 @@ public final class VideoPlayerScreen extends GuiScreen {
                         Math.max(80, width - 24)),
                 width / 2,
                 height / 2 - 80,
-                colors.textPrimary);
+                0xFFFFFFFF);
 
         if (errorMessage != null) {
             drawCenteredString(
@@ -123,9 +140,21 @@ public final class VideoPlayerScreen extends GuiScreen {
                             Math.max(80, width - 24)),
                     width / 2,
                     height - 60,
-                    colors.textError);
+                    0xFFFF5555);
         }
         super.drawScreen(mouseX, mouseY, partialTicks);
+
+        if (androidRuntime
+                && (contains(openVideoButton, mouseX, mouseY)
+                    || contains(openFolderButton, mouseX, mouseY))) {
+            List<String> lines =
+                    fontRendererObj.listFormattedStringToWidth(
+                            ANDROID_HELP,
+                            Math.min(
+                                    280,
+                                    Math.max(120, width - 40)));
+            drawHoveringText(lines, mouseX, mouseY);
+        }
     }
 
     public void onClose() {
@@ -147,5 +176,49 @@ public final class VideoPlayerScreen extends GuiScreen {
     @Override
     public boolean doesGuiPauseGame() {
         return false;
+    }
+
+    private static boolean contains(
+            GuiButton button,
+            int mouseX,
+            int mouseY) {
+        return button != null
+                && button.visible
+                && mouseX >= button.xPosition
+                && mouseY >= button.yPosition
+                && mouseX < button.xPosition + button.width
+                && mouseY < button.yPosition + button.height;
+    }
+
+    private static boolean isAndroidRuntime() {
+        String os = lowerProperty("os.name");
+        String vm = lowerProperty("java.vm.name");
+        String runtime = lowerProperty("java.runtime.name");
+        String vendor = lowerProperty("java.vendor");
+        String javaHome = lowerProperty("java.home");
+        boolean pojavEnvironment = false;
+        try {
+            pojavEnvironment =
+                    System.getenv("POJAV_RENDERER") != null
+                    || System.getenv("POJAV_NATIVEDIR") != null;
+        } catch (SecurityException ignored) {
+            // A restricted launcher can deny environment access. The stable
+            // JVM properties above still cover standard Android runtimes.
+        }
+        return os.contains("android")
+                || vm.contains("dalvik")
+                || runtime.contains("android")
+                || vendor.contains("android")
+                || javaHome.contains("/data/user/")
+                || pojavEnvironment;
+    }
+
+    private static String lowerProperty(String key) {
+        try {
+            return System.getProperty(key, "")
+                    .toLowerCase(Locale.ROOT);
+        } catch (SecurityException ignored) {
+            return "";
+        }
     }
 }

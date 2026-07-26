@@ -33,6 +33,7 @@ public final class RecordableMod {
 
     @Mod.EventHandler
     public void initialize(FMLInitializationEvent event) {
+        ModCompatibilityChecker.checkAndLog();
         RecordingManager.getInstance().initialize();
         RecordableClientEvents.register();
         LOGGER.info("Record-able Forge 1.8.9 initialized.");

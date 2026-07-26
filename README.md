@@ -90,9 +90,10 @@ This branch replaces them with Forge events, Java 8 `GuiScreen` controls, the
 interaction order, scrolling, theme presets, and desktop recording behavior.
 Android/Pojav-only behavior is outside this desktop Forge target.
 
-The current V1-0.09 UI parity pass still needs a fresh end-to-end client and
-visual verification run. The exact completed and pending checks are kept in
-[docs/PARITY.md](docs/PARITY.md).
+The V1-0.09 desktop parity build has completed a fresh Java 8 client,
+pixel-level title/gallery/settings review, asynchronous FFmpeg interaction
+check, and real in-world recording with game audio and pause/resume. The exact
+verification record is kept in [docs/PARITY.md](docs/PARITY.md).
 
 ## Development
 

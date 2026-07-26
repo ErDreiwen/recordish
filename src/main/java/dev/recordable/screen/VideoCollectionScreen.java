@@ -6,11 +6,9 @@ import dev.recordable.RecordableMod;
 import dev.recordable.StorageManager;
 import dev.recordable.VideoMetadata;
 import dev.recordable.VideoShareUploader;
-import dev.recordable.theme.CycleButton;
 import dev.recordable.theme.ThemeColors;
 import dev.recordable.theme.ThemeEngine;
 import dev.recordable.theme.ThemePreset;
-import dev.recordable.theme.ThemedButton;
 import dev.recordable.theme.ThemedPanel;
 import dev.recordable.theme.VhsEffectsRenderer;
 import net.minecraft.client.Minecraft;
@@ -56,7 +54,6 @@ public final class VideoCollectionScreen extends GuiScreen {
     private static final int ACTION_WIDTH = 54;
     private static final int ACTION_HEIGHT = 14;
     private static final int DELETE_CONFIRM_MS = 6000;
-
     private static final int BUTTON_BACK = 100;
     private static final int BUTTON_SETTINGS = 101;
     private static final int BUTTON_OPEN_FOLDER = 102;
@@ -85,7 +82,7 @@ public final class VideoCollectionScreen extends GuiScreen {
             new AtomicBoolean(false);
 
     private GuiTextField searchField;
-    private CycleButton sortButton;
+    private GuiButton sortButton;
     private String statusMessage;
     private boolean statusIsError;
     private boolean loading;
@@ -239,70 +236,39 @@ public final class VideoCollectionScreen extends GuiScreen {
             int buttonWidth,
             int buttonHeight,
             String label) {
+        int buttonId;
         switch (toolbarIndex) {
             case 0:
-                buttonList.add(ThemedButton.create(
-                        BUTTON_BACK,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> onClose()));
+                buttonId = BUTTON_BACK;
                 break;
             case 1:
-                buttonList.add(ThemedButton.create(
-                        BUTTON_SETTINGS,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> openSettings()));
+                buttonId = BUTTON_SETTINGS;
                 break;
             case 2:
-                buttonList.add(ThemedButton.create(
-                        BUTTON_OPEN_FOLDER,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> openRecordingsFolder()));
+                buttonId = BUTTON_OPEN_FOLDER;
                 break;
             case 3:
-                buttonList.add(ThemedButton.create(
-                        BUTTON_REFRESH,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> refreshVideos()));
+                buttonId = BUTTON_REFRESH;
                 break;
             case 4:
-                sortButton = CycleButton.create(
-                        BUTTON_SORT,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> cycleSortMode(true),
-                        button -> cycleSortMode(false));
-                buttonList.add(sortButton);
+                buttonId = BUTTON_SORT;
                 break;
             default:
-                buttonList.add(ThemedButton.create(
-                        BUTTON_TOGGLE_COLLECTION,
-                        x,
-                        y,
-                        buttonWidth,
-                        buttonHeight,
-                        label,
-                        button -> toggleClipsView()));
+                buttonId = BUTTON_TOGGLE_COLLECTION;
                 break;
         }
+
+        GuiButton button = new GuiButton(
+                buttonId,
+                x,
+                y,
+                buttonWidth,
+                buttonHeight,
+                label);
+        if (buttonId == BUTTON_SORT) {
+            sortButton = button;
+        }
+        buttonList.add(button);
     }
 
     private void openSettings() {
@@ -314,11 +280,31 @@ public final class VideoCollectionScreen extends GuiScreen {
 
     @Override
     protected void actionPerformed(GuiButton button) {
-        /*
-         * Toolbar actions are attached directly to the themed controls. Keeping
-         * this empty prevents CycleButton's callback and GuiScreen dispatch from
-         * cycling twice.
-         */
+        if (button == null || !button.enabled) {
+            return;
+        }
+        switch (button.id) {
+            case BUTTON_BACK:
+                onClose();
+                break;
+            case BUTTON_SETTINGS:
+                openSettings();
+                break;
+            case BUTTON_OPEN_FOLDER:
+                openRecordingsFolder();
+                break;
+            case BUTTON_REFRESH:
+                refreshVideos();
+                break;
+            case BUTTON_SORT:
+                cycleSortMode(true);
+                break;
+            case BUTTON_TOGGLE_COLLECTION:
+                toggleClipsView();
+                break;
+            default:
+                break;
+        }
     }
 
     @Override
@@ -383,7 +369,7 @@ public final class VideoCollectionScreen extends GuiScreen {
                     RecordableConfig config =
                             RecordableConfig.get();
                     Path scanDirectory = clipsMode
-                            ? config.getClipDirectory()
+                            ? StorageManager.getAutoClipDirectory(config)
                             : config.getOutputDirectory();
                     if (scanDirectory != null
                             && Files.isDirectory(scanDirectory)) {
@@ -392,8 +378,9 @@ public final class VideoCollectionScreen extends GuiScreen {
                                 : Files.list(scanDirectory);
                         try {
                             stream.filter(Files::isRegularFile)
-                                    .filter(path -> StorageManager.isVideoFile(
-                                            filename(path)))
+                                    .filter(
+                                            VideoCollectionScreen
+                                                    ::isSupportedVideo)
                                     .forEach(path -> {
                                         if (!Thread.currentThread()
                                                 .isInterrupted()) {
@@ -502,6 +489,7 @@ public final class VideoCollectionScreen extends GuiScreen {
                 for (final Path path : paths) {
                     if (!durationProbeRunning.get()
                             || generation != workGeneration
+                            || durationProber != executor
                             || Thread.currentThread()
                                     .isInterrupted()) {
                         break;
@@ -510,13 +498,17 @@ public final class VideoCollectionScreen extends GuiScreen {
                         final VideoMetadata replacement =
                                 VideoMetadata.probeDurationFor(path);
                         if (replacement != null
-                                && durationProbeRunning.get()) {
+                                && durationProbeRunning.get()
+                                && generation == workGeneration
+                                && durationProber == executor) {
                             Minecraft.getMinecraft().addScheduledTask(
                                     new Runnable() {
                                 @Override
                                 public void run() {
                                     if (generation
-                                            != workGeneration) {
+                                            != workGeneration
+                                            || durationProber
+                                                != executor) {
                                         return;
                                     }
                                     replaceProbedEntry(
@@ -532,7 +524,10 @@ public final class VideoCollectionScreen extends GuiScreen {
                                 throwable);
                     }
                 }
-                durationProbeRunning.set(false);
+                if (generation == workGeneration
+                        && durationProber == executor) {
+                    durationProbeRunning.set(false);
+                }
             }
         });
     }
@@ -657,6 +652,7 @@ public final class VideoCollectionScreen extends GuiScreen {
             int mouseY,
             float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         ThemeColors colors = ThemeEngine.get().colors();
         ThemePreset preset = ThemeEngine.get().preset();
 
@@ -1792,10 +1788,9 @@ public final class VideoCollectionScreen extends GuiScreen {
 
         if (mouseButton == 1
                 && sortButton != null
-                && sortButton.mousePressedSecondary(
-                        mc,
-                        mouseX,
-                        mouseY)) {
+                && sortButton.mousePressed(mc, mouseX, mouseY)) {
+            cycleSortMode(false);
+            sortButton.playPressSound(mc.getSoundHandler());
             return;
         }
 
@@ -1986,8 +1981,13 @@ public final class VideoCollectionScreen extends GuiScreen {
     private void openRecordingsFolder() {
         try {
             Path directory = clipsMode
-                    ? RecordableConfig.get().getClipDirectory()
+                    ? StorageManager.getAutoClipDirectory(
+                            RecordableConfig.get())
                     : RecordableConfig.get().getOutputDirectory();
+            if (directory == null) {
+                throw new IOException(
+                        "The recording output directory is not configured.");
+            }
             Files.createDirectories(directory);
             if (!PlatformUtils.open(directory)) {
                 throw new IOException(
@@ -2204,6 +2204,11 @@ public final class VideoCollectionScreen extends GuiScreen {
         return path == null || path.getFileName() == null
                 ? ""
                 : path.getFileName().toString();
+    }
+
+    private static boolean isSupportedVideo(Path path) {
+        String name = filename(path).toLowerCase(Locale.ROOT);
+        return name.endsWith(".mp4") || name.endsWith(".mkv");
     }
 
     private static String formatSizeMb(long bytes) {

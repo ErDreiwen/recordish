@@ -26,6 +26,8 @@ public final class StorageManager {
     private static final String[] VIDEO_EXTENSIONS = {
             ".mp4", ".mkv", ".webm", ".mov", ".avi", ".gif"
     };
+    private static final String AUTO_CLIP_DIRECTORY =
+            "recording_auto_clips";
     private static final long BYTES_PER_MEBIBYTE = 1024L * 1024L;
     private static final int MAX_CAPTURED_PROCESS_BYTES = 4 * 1024 * 1024;
     private static final Logger LOGGER = Logger.getLogger("Record-able");
@@ -276,7 +278,37 @@ public final class StorageManager {
         return false;
     }
 
-    /** Lists direct child recordings, newest first. */
+    public static Path getAutoClipDirectory(RecordableConfig config) {
+        if (config == null) {
+            return null;
+        }
+        Path outputDirectory = config.getOutputDirectory();
+        return outputDirectory == null
+                ? null
+                : outputDirectory.resolve(AUTO_CLIP_DIRECTORY);
+    }
+
+    static Path getAutoClipTriggerDirectory(
+            RecordableConfig config,
+            String trigger) {
+        Path autoClipDirectory = getAutoClipDirectory(config);
+        if (autoClipDirectory == null) {
+            return null;
+        }
+        String safeTrigger = trigger == null
+                ? ""
+                : trigger.trim()
+                        .toLowerCase(Locale.ROOT)
+                        .replaceAll("[^a-z0-9_-]+", "_")
+                        .replace('-', '_')
+                        .replaceAll("^_+|_+$", "");
+        if (safeTrigger.isEmpty()) {
+            safeTrigger = "auto_clip";
+        }
+        return autoClipDirectory.resolve(safeTrigger);
+    }
+
+    /** Lists recordings and clip subtrees, newest first. */
     public static List<StoredFile> listRecordings(RecordableConfig config) {
         List<StoredFile> recordings = new ArrayList<StoredFile>();
         if (config == null) {
@@ -287,15 +319,31 @@ public final class StorageManager {
             return recordings;
         }
 
-        collectRecordingsFromDirectory(directory, config, recordings);
-        Path clipDirectory = config.getClipDirectory();
-        if (clipDirectory != null
-                && !clipDirectory.equals(directory)
-                && Files.isDirectory(clipDirectory)) {
+        collectRecordingsFromDirectory(
+                directory,
+                config,
+                recordings,
+                false);
+        Path autoClipDirectory = getAutoClipDirectory(config);
+        if (autoClipDirectory != null
+                && !autoClipDirectory.equals(directory)
+                && Files.isDirectory(autoClipDirectory)) {
             collectRecordingsFromDirectory(
-                    clipDirectory,
+                    autoClipDirectory,
                     config,
-                    recordings);
+                    recordings,
+                    true);
+        }
+        Path legacyClipDirectory = config.getClipDirectory();
+        if (legacyClipDirectory != null
+                && !legacyClipDirectory.equals(directory)
+                && !legacyClipDirectory.equals(autoClipDirectory)
+                && Files.isDirectory(legacyClipDirectory)) {
+            collectRecordingsFromDirectory(
+                    legacyClipDirectory,
+                    config,
+                    recordings,
+                    true);
         }
 
         Collections.sort(recordings, new Comparator<StoredFile>() {
@@ -310,8 +358,11 @@ public final class StorageManager {
     private static void collectRecordingsFromDirectory(
             Path directory,
             RecordableConfig config,
-            List<StoredFile> recordings) {
-        try (Stream<Path> stream = Files.list(directory)) {
+            List<StoredFile> recordings,
+            boolean recursive) {
+        try (Stream<Path> stream = recursive
+                ? Files.walk(directory)
+                : Files.list(directory)) {
             stream.filter(Files::isRegularFile)
                     .filter(path -> isVideoFile(filename(path)))
                     .forEach(path -> {

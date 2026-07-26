@@ -4,6 +4,7 @@ import dev.recordable.FfmpegBundleManager;
 import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableConfig;
 import dev.recordable.RecordableMod;
+import dev.recordable.theme.ThemedPanel;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -586,6 +587,7 @@ public final class FfmpegDownloadScreen extends GuiScreen
     public void drawScreen(
             int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
 
         int accent = 0xFF000000
                 | RecordableConfig.get()

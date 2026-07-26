@@ -48,6 +48,9 @@ public final class RecordingManager {
     private static final long SHUTDOWN_FINALIZER_TIMEOUT_MILLIS = 45_000L;
     private static final long SHUTDOWN_INTERRUPT_GRACE_MILLIS = 2_000L;
     private static final long SHUTDOWN_REPLAY_TIMEOUT_MILLIS = 15_000L;
+    private static final int CAPTURE_SOURCE_SWITCHES_TO_EXHAUST = 3;
+    private static final int BLACK_CONFIRMATION_FRAMES = 15;
+    private static final long DROPPED_FRAME_WARNING_THRESHOLD = 100L;
 
     private final Object lock = new Object();
     private final FrameProcessor frameProcessor = new FrameProcessor();
@@ -84,6 +87,13 @@ public final class RecordingManager {
     private int consecutiveCaptureFailures;
     private int bookmarkCounter;
     private boolean firstFrameTimelineAligned;
+    private volatile boolean blackScreenWarned;
+    private volatile boolean droppedFrameWarningSent;
+    private long observedCaptureFrames;
+    private long observedBlackFrames;
+    private String observedCaptureSource;
+    private int blackCaptureSourceSwitches;
+    private int blackFramesAfterSourceExhaustion;
     private volatile String pendingToastMessage;
     private volatile long pendingToastExpiresAtMillis;
     private volatile Throwable lastFailure;
@@ -98,11 +108,29 @@ public final class RecordingManager {
     public void initialize() {
         /*
          * Executable probes can wait on a broken custom path or PATH entry.
-         * The title-screen setup flow performs this check asynchronously;
-         * recording start still performs the authoritative synchronous
-         * preflight immediately before an encoder is created.
+         * Warm executable, codec-listing, and hardware-preflight caches on a
+         * daemon so a configured WebM or hardware recording works directly
+         * after launch without blocking Minecraft's render thread.
          */
         FfmpegBundleManager.invalidateCache();
+        Thread warmup = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    FfmpegBundleManager.FfmpegStatus status =
+                            FfmpegBundleManager.detectFfmpeg();
+                    if (status.isFound()) {
+                        FFmpegEncoder.detectAvailableEncoders();
+                    }
+                } catch (Throwable throwable) {
+                    RecordableMod.LOGGER.debug(
+                            "Background FFmpeg capability warmup failed.",
+                            throwable);
+                }
+            }
+        }, "Recordable-FFmpeg-Warmup");
+        warmup.setDaemon(true);
+        warmup.start();
     }
 
     public static boolean isInGameState(Minecraft minecraft) {
@@ -130,10 +158,16 @@ public final class RecordingManager {
     }
 
     public void startRecording() {
-        startRecording(null);
+        startRecording(null, true);
     }
 
     public void startRecording(String filePrefix) {
+        startRecording(filePrefix, false);
+    }
+
+    private void startRecording(
+            String filePrefix,
+            boolean allowAutoEnable) {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (!isInGameState(minecraft)) {
             RecordableMessages.send(
@@ -144,15 +178,22 @@ public final class RecordingManager {
 
         RecordableConfig config = RecordableConfig.get();
         config.sanitize();
-        if (!config.enabled) {
-            RecordableMessages.send(
-                    ChatCategory.RECORDING,
-                    "Record-able is disabled in its settings.");
-            return;
-        }
-
         synchronized (lock) {
             if (state != State.IDLE) return;
+            if (!config.enabled) {
+                if (!allowAutoEnable) {
+                    RecordableMessages.send(
+                            ChatCategory.RECORDING,
+                            "Record-able is disabled in its settings.");
+                    return;
+                }
+                config.enabled = true;
+                config.save();
+                RecordableMessages.send(
+                        ChatCategory.RECORDING,
+                        "\u00a7aRecord-able was disabled. "
+                                + "Auto-enabled and starting recording...");
+            }
             state = State.STARTING;
             lastFailure = null;
         }
@@ -248,16 +289,22 @@ public final class RecordingManager {
                 failedCaptures.set(0L);
                 bookmarks.clear();
                 bookmarkCounter = 0;
-                microphoneActive = config.captureMicrophone
+                blackScreenWarned = false;
+                droppedFrameWarningSent = false;
+                observedCaptureFrames = 0L;
+                observedBlackFrames = 0L;
+                observedCaptureSource = null;
+                blackCaptureSourceSwitches = 0;
+                blackFramesAfterSourceExhaustion = 0;
+                microphoneActive = newAudio != null
+                        && newAudio.hasMicrophoneAudio()
+                        && config.captureMicrophone
                         && !config.microphonePushToTalk;
                 state = State.RECORDING;
             }
 
             PerformanceMetrics.getInstance().reset();
             PerformanceOptimizer.getInstance().reset();
-            if (config.autoMarkerOnStart && config.markersEnabled) {
-                addBookmark("Recording started");
-            }
             String audioDescription = newAudio == null
                     ? ""
                     : newAudio.getStatusDescription();
@@ -312,14 +359,14 @@ public final class RecordingManager {
      * framebuffer is still available.
      */
     public void onRenderFrame() {
-        // The replay/montage cadence is independent of the main recording
-        // cadence. In particular, a 60 FPS montage must not be capped by a
-        // concurrent 30 FPS recording.
-        captureReplayFrame();
         if (state != State.RECORDING) {
+            captureReplayFrame();
             return;
         }
 
+        RecordableConfig frameConfig = RecordableConfig.get();
+        ReplayBuffer activeReplay =
+                prepareReplayForSharedCapture(frameConfig);
         final long now = System.nanoTime();
         updateAdaptiveCaptureRate(now);
         if (lastFrameCaptureNanos != 0L
@@ -355,6 +402,7 @@ public final class RecordingManager {
             // The asynchronous PBO path intentionally has no frame on its
             // first call.
             if (frame == null) return;
+            maybeWarnBlackScreen(activeCapture);
 
             FrameValidator.ValidationResult validation =
                     FrameValidator.validate(frame);
@@ -387,9 +435,28 @@ public final class RecordingManager {
                     : minecraft.thePlayer.getName();
             frameProcessor.process(
                     frame,
-                    RecordableConfig.get(),
+                    frameConfig,
                     getEffectiveRecordingMillis(),
                     username);
+            if (activeReplay != null && activeReplay.isActive()) {
+                try {
+                    /*
+                     * ReplayBuffer copies/downscales synchronously, before
+                     * the encoder assumes ownership and eventually releases
+                     * this pooled frame.
+                     */
+                    activeReplay.addFrame(
+                            frame.getPixels(),
+                            frame.getWidth(),
+                            frame.getHeight(),
+                            frame.getCapturedAtNanos());
+                } catch (Throwable replayFailure) {
+                    RecordableMod.LOGGER.warn(
+                            "Unable to copy a recording frame into the replay "
+                                    + "buffer.",
+                            replayFailure);
+                }
+            }
             if (activeEncoder.submit(frame)) {
                 alignTimelineToFirstFrame(
                     frame.getCapturedAtNanos());
@@ -412,9 +479,97 @@ public final class RecordingManager {
                         "Failed to capture a recording frame.",
                         throwable);
             }
+        } finally {
+            maybeWarnDroppedFrames(activeEncoder);
         }
 
         enforceLimits(now);
+    }
+
+    /**
+     * ScreenCapture rotates among three read sources every 15 black frames and
+     * resets its consecutive counter at each rotation. Track those rotations
+     * across the session, then require one more black confirmation window
+     * before presenting an actionable warning.
+     */
+    private void maybeWarnBlackScreen(ScreenCapture capture) {
+        if (blackScreenWarned || capture == null) return;
+
+        long totalFrames = capture.getTotalFramesProduced();
+        long totalBlackFrames = capture.getTotalBlackFrames();
+        long newFrames = totalFrames - observedCaptureFrames;
+        long newBlackFrames = totalBlackFrames - observedBlackFrames;
+        observedCaptureFrames = totalFrames;
+        observedBlackFrames = totalBlackFrames;
+        if (newFrames <= 0L) return;
+
+        String source = capture.getReadSourceName();
+        if (newBlackFrames < newFrames) {
+            observedCaptureSource = source;
+            blackCaptureSourceSwitches = 0;
+            blackFramesAfterSourceExhaustion = 0;
+            return;
+        }
+
+        boolean sourcesWereExhausted =
+                blackCaptureSourceSwitches
+                        >= CAPTURE_SOURCE_SWITCHES_TO_EXHAUST;
+        if (observedCaptureSource == null) {
+            observedCaptureSource = source;
+        } else if (!observedCaptureSource.equals(source)) {
+            observedCaptureSource = source;
+            blackCaptureSourceSwitches++;
+        }
+        if (sourcesWereExhausted) {
+            blackFramesAfterSourceExhaustion +=
+                    (int) Math.min(Integer.MAX_VALUE, newBlackFrames);
+        }
+        if (blackCaptureSourceSwitches
+                    < CAPTURE_SOURCE_SWITCHES_TO_EXHAUST
+                || blackFramesAfterSourceExhaustion
+                    < BLACK_CONFIRMATION_FRAMES) {
+            return;
+        }
+
+        blackScreenWarned = true;
+        RecordableMod.LOGGER.error(
+                "Screen capture stayed black after every capture source was "
+                        + "tried ({} black / {} total; source {}).",
+                Long.valueOf(totalBlackFrames),
+                Long.valueOf(totalFrames),
+                source);
+        RecordableMessages.send(
+                ChatCategory.WARNINGS,
+                "\u00a7eRecord-able is capturing only black frames after "
+                        + "trying every source. Disable shaders or OptiFine "
+                        + "Fast Render, update your GPU driver, or try the "
+                        + "Software encoder.");
+    }
+
+    private void maybeWarnDroppedFrames(FFmpegEncoder activeEncoder) {
+        if (droppedFrameWarningSent) return;
+
+        long dropped = skippedFrames.get()
+                + failedCaptures.get()
+                + (activeEncoder == null
+                    ? 0L
+                    : activeEncoder.getDroppedFrames());
+        if (dropped < DROPPED_FRAME_WARNING_THRESHOLD) return;
+
+        droppedFrameWarningSent = true;
+        RecordableMod.LOGGER.warn(
+                "Performance issue detected - droppedFrames={} queue={}/{}.",
+                Long.valueOf(dropped),
+                Integer.valueOf(activeEncoder == null
+                        ? 0
+                        : activeEncoder.getQueueSize()),
+                Integer.valueOf(activeEncoder == null
+                        ? 0
+                        : activeEncoder.getQueueCapacity()));
+        RecordableMessages.send(
+                ChatCategory.RECORDING,
+                "\u00a7eRecord-able is dropping frames. Try 720p/30fps "
+                        + "or Quality=Performance for smoother recording.");
     }
 
     private void alignTimelineToFirstFrame(
@@ -721,9 +876,13 @@ public final class RecordingManager {
             @Override
             public void run() {
                 if (resultFailure == null && result != null) {
-                    RecordableMessages.send(
-                            ChatCategory.RECORDING,
-                            "Saved recording: " + result.getFileName());
+                    if (RecordableConfig.get()
+                            .showPostRecordingToast) {
+                        RecordableMessages.send(
+                                ChatCategory.RECORDING,
+                                "Saved recording: "
+                                        + result.getFileName());
+                    }
                 } else {
                     RecordableMessages.error(
                             "Recording finalization failed: "
@@ -762,9 +921,11 @@ public final class RecordingManager {
 
     public void setPushToTalkActive(boolean active) {
         RecordableConfig config = RecordableConfig.get();
-        microphoneActive = config.captureMicrophone
-                && (!config.microphonePushToTalk || active);
         AudioCaptureSession session = audioSession;
+        microphoneActive = session != null
+                && session.hasMicrophoneAudio()
+                && config.captureMicrophone
+                && (!config.microphonePushToTalk || active);
         if (session != null) {
             session.setMicrophoneGate(microphoneActive);
         }
@@ -873,6 +1034,17 @@ public final class RecordingManager {
         return microphoneActive;
     }
 
+    /**
+     * Returns whether this recording owns a usable microphone capture stream.
+     *
+     * <p>This is deliberately separate from {@link #isMicrophoneActive()}:
+     * Push-to-Talk keeps the stream open while its gate is idle.</p>
+     */
+    public boolean isMicrophoneCapturing() {
+        AudioCaptureSession session = audioSession;
+        return session != null && session.hasMicrophoneAudio();
+    }
+
     public long getEffectiveRecordingMillis() {
         synchronized (lock) {
             return getEffectiveRecordingMillisLocked();
@@ -911,6 +1083,16 @@ public final class RecordingManager {
         if (ratio >= 0.9D) return QueueHealth.CRITICAL;
         if (ratio >= 0.5D) return QueueHealth.SLOW;
         return QueueHealth.OK;
+    }
+
+    public int getQueueSize() {
+        FFmpegEncoder active = encoder;
+        return active == null ? 0 : Math.max(0, active.getQueueSize());
+    }
+
+    public int getQueueCapacity() {
+        FFmpegEncoder active = encoder;
+        return active == null ? 0 : Math.max(0, active.getQueueCapacity());
     }
 
     public double getCaptureFpsEstimate() {
@@ -1127,6 +1309,31 @@ public final class RecordingManager {
         return value == null || value.trim().isEmpty();
     }
 
+    /**
+     * Keeps the rolling buffer active during a normal recording while using
+     * that recording's already-captured frame as the replay source.
+     */
+    private ReplayBuffer prepareReplayForSharedCapture(
+            RecordableConfig config) {
+        ReplayBuffer replay = ReplayBuffer.getInstance();
+        if (!shouldBufferReplay(config)) {
+            closeReplayCapture();
+            if (replay.isActive()) {
+                replay.stop();
+            }
+            return null;
+        }
+
+        if (replayScreenCapture != null) {
+            closeReplayCapture();
+        }
+        configureReplayBuffer(
+                config,
+                makeEven(Math.max(2, recordingWidth)),
+                makeEven(Math.max(2, recordingHeight)));
+        return replay.isActive() ? replay : null;
+    }
+
     private void captureReplayFrame() {
         RecordableConfig config = RecordableConfig.get();
         Minecraft minecraft = Minecraft.getMinecraft();
@@ -1139,24 +1346,20 @@ public final class RecordingManager {
             }
             return;
         }
-        if (replay.isSaving()) {
-            // The snapshot pins its source chunks. Pausing capture prevents a
-            // second rolling window from accumulating beside those chunks.
-            closeReplayCapture();
-            return;
-        }
 
         int nativeWidth = makeEven(Math.max(2, minecraft.displayWidth));
         int nativeHeight = makeEven(Math.max(2, minecraft.displayHeight));
         RecordableConfig.CaptureDimensions dimensions =
                 config.resolveCaptureDimensions(nativeWidth, nativeHeight);
-        int width = makeEven(dimensions.getWidth());
-        int height = makeEven(dimensions.getHeight());
-        int[] preset = RecordableConfig.resolveReplayPreset(
+        int[] sourceDimensions = ReplayBuffer.capSourceDimensions(
+                dimensions.getWidth(),
+                dimensions.getHeight());
+        int width = sourceDimensions[0];
+        int height = sourceDimensions[1];
+        int fps = ReplayBuffer.resolveTargetFps(
                 config.replayBufferQuality,
                 height,
                 requestedReplayFps(config));
-        int fps = Math.max(1, preset[1]);
         long now = System.nanoTime();
         long interval = Math.max(1L, 1_000_000_000L / fps);
         if (lastReplayCaptureNanos != 0L
@@ -1187,6 +1390,8 @@ public final class RecordingManager {
                 frameProcessor.processReplayCensors(frame, config);
                 replay.addFrame(
                         frame.getPixels(),
+                        frame.getWidth(),
+                        frame.getHeight(),
                         frame.getCapturedAtNanos());
             } finally {
                 frame.release();
@@ -1205,29 +1410,30 @@ public final class RecordingManager {
         if (!shouldBufferReplay(config)) return;
         ReplayBuffer replay = ReplayBuffer.getInstance();
         int fps = requestedReplayFps(config);
-        int[] preset = RecordableConfig.resolveReplayPreset(
+        int effectiveFps = ReplayBuffer.resolveTargetFps(
                 config.replayBufferQuality,
                 height,
                 fps);
-        int effectiveFps = Math.max(
-                1,
-                Math.min(fps, Math.max(1, preset[1])));
-        int expectedHeight = preset[0] <= 0
-                ? height
-                : Math.min(height, makeEven(preset[0]));
-        double scale = expectedHeight / (double) height;
-        int expectedWidth = makeEven(Math.max(
-                2,
-                (int) Math.round(width * scale)));
+        int[] expectedDimensions =
+                ReplayBuffer.resolveStoredDimensions(
+                        width,
+                        height,
+                        config.replayBufferQuality);
+        int expectedWidth = expectedDimensions[0];
+        int expectedHeight = expectedDimensions[1];
         int duration = requestedReplayDuration(config);
         if (replay.isActive()
-                && replay.getSourceWidth() == width
-                && replay.getSourceHeight() == height
                 && replay.getStoredWidth() == expectedWidth
                 && replay.getStoredHeight() == expectedHeight
                 && replay.getTargetFps() == effectiveFps
                 && replay.getRequestedDurationSeconds()
                     >= duration) {
+            return;
+        }
+        // A save pins the current snapshot's backing chunks. Keep accepting
+        // frames into the existing buffer until that snapshot is released,
+        // then retry any requested reconfiguration on the next render.
+        if (replay.isSaving()) {
             return;
         }
         String warning = ReplayBuffer.checkMemorySafety(

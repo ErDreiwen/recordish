@@ -1,8 +1,9 @@
 package dev.recordable.screen;
 
 import dev.recordable.FfmpegBundleManager;
-import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableConfig;
+import dev.recordable.theme.ThemeEngine;
+import dev.recordable.theme.ThemedButton;
 
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
@@ -33,7 +34,6 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
     private static final int TITLE_COLOR = 0xFFFFFFFF;
     private static final int TEXT_COLOR = 0xFFCCCCCC;
     private static final int HIGHLIGHT_COLOR = 0xFF88FF88;
-    private static final int WARNING_COLOR = 0xFFFF7777;
 
     private final GuiScreen parent;
     private int panelX;
@@ -47,6 +47,7 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
 
     @Override
     public void initGui() {
+        ThemeEngine.get().loadFromConfig();
         buttonList.clear();
 
         panelWidth = Math.min(
@@ -69,14 +70,14 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
         if (automatic) {
             int totalWidth = buttonWidth * 2 + gap;
             int startX = (width - totalWidth) / 2;
-            buttonList.add(new GuiButton(
+            buttonList.add(new ThemedButton(
                     DOWNLOAD_ID,
                     startX,
                     buttonY,
                     buttonWidth,
                     buttonHeight,
                     "Download FFmpeg"));
-            buttonList.add(new GuiButton(
+            buttonList.add(new ThemedButton(
                     DISMISS_ID,
                     startX + buttonWidth + gap,
                     buttonY,
@@ -84,7 +85,7 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
                     buttonHeight,
                     "Dismiss"));
         } else {
-            buttonList.add(new GuiButton(
+            buttonList.add(new ThemedButton(
                     DISMISS_ID,
                     (width - buttonWidth) / 2,
                     buttonY,
@@ -126,6 +127,7 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
     public void drawScreen(
             int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        dev.recordable.theme.ThemedPanel.drawMenuBackdrop(width, height);
 
         Gui.drawRect(
                 panelX,
@@ -159,13 +161,13 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
         if (isVulkanRendererLoaded()) {
             lines.add(new WelcomeLine(
                     "Warning: a Vulkan renderer (e.g. VulkanMod) is installed.",
-                    WARNING_COLOR));
+                    TEXT_COLOR));
             lines.add(new WelcomeLine(
                     "Record-able captures OpenGL frames and does NOT support Vulkan;",
-                    WARNING_COLOR));
+                    TEXT_COLOR));
             lines.add(new WelcomeLine(
                     "recordings will be black. Remove the Vulkan renderer to record.",
-                    WARNING_COLOR));
+                    TEXT_COLOR));
             lines.add(new WelcomeLine("", TEXT_COLOR));
         }
 
@@ -183,10 +185,10 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
 
         if (automatic) {
             lines.add(new WelcomeLine(
-                    "Click \"Download FFmpeg\" to review and install FFmpeg",
-                    HIGHLIGHT_COLOR));
+                    "Click \"Download FFmpeg\" to automatically download and install",
+                    TEXT_COLOR));
             lines.add(new WelcomeLine(
-                    "from a trusted source:",
+                    "FFmpeg from a trusted source:",
                     HIGHLIGHT_COLOR));
             lines.add(new WelcomeLine(
                     FfmpegBundleManager
@@ -205,11 +207,11 @@ public final class FfmpegWelcomeScreen extends GuiScreen {
         } else {
             lines.add(new WelcomeLine(
                     "Auto-download is not available for your platform.",
-                    WARNING_COLOR));
+                    TEXT_COLOR));
             lines.add(new WelcomeLine("", TEXT_COLOR));
             lines.add(new WelcomeLine(
                     "Manual installation instructions:",
-                    HIGHLIGHT_COLOR));
+                    TEXT_COLOR));
             lines.add(new WelcomeLine(
                     FfmpegBundleManager
                             .getManualInstallInstructions(),

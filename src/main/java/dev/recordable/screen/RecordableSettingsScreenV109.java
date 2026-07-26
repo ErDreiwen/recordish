@@ -1,14 +1,17 @@
 package dev.recordable.screen;
 
 import dev.recordable.AudioCaptureSession;
+import dev.recordable.FFmpegEncoder;
 import dev.recordable.FfmpegBundleManager;
 import dev.recordable.NativeFolderPicker;
 import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableConfig;
 import dev.recordable.RecordableMod;
+import dev.recordable.RecordingManager;
 import dev.recordable.StorageManager;
 import dev.recordable.theme.ThemeColors;
 import dev.recordable.theme.ThemePreset;
+import dev.recordable.theme.ThemedPanel;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
@@ -56,6 +59,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
     private static final int WIDGET_HEIGHT = 20;
     private static final int FOOTER_OPEN = 9000;
     private static final int FOOTER_DONE = 9001;
+    private static final int MAX_STALE_ENCODER_PROBE_RETRIES = 2;
     private static final Random EFFECT_RANDOM = new Random();
     private static long lastGlitchTick;
     private static int glitchY;
@@ -92,7 +96,18 @@ class RecordableSettingsScreenV109 extends GuiScreen {
     private String statusMessage = "";
     private boolean statusError;
     private long statusUntil;
-    private FfmpegBundleManager.FfmpegStatus ffmpegStatus;
+    private volatile FfmpegBundleManager.FfmpegStatus ffmpegStatus;
+    private volatile List<RecordableConfig.VideoEncoder>
+            availableVideoEncoders =
+                    Collections.singletonList(
+                            RecordableConfig.VideoEncoder.SOFTWARE);
+    private boolean encoderProbeRunning;
+    private boolean encoderProbeComplete;
+    private long encoderProbeCacheGeneration = Long.MIN_VALUE;
+    private int encoderProbeStaleRetries;
+    private int screenGeneration;
+    private boolean screenClosed = true;
+    private Decoration ffmpegStatusDecoration;
 
     private volatile List<AudioCaptureSession.AudioDevice> audioDevices =
             Collections.emptyList();
@@ -106,18 +121,39 @@ class RecordableSettingsScreenV109 extends GuiScreen {
 
     @Override
     public void initGui() {
+        if (screenClosed) {
+            screenClosed = false;
+            screenGeneration++;
+        }
+        final int generation = screenGeneration;
+        FfmpegBundleManager.FfmpegStatus cachedStatus =
+                FfmpegBundleManager.getCachedFfmpegStatus();
+        long cachedGeneration =
+                FfmpegBundleManager.getCacheGeneration();
+        if (!sameFfmpegStatus(ffmpegStatus, cachedStatus)
+                || encoderProbeCacheGeneration != cachedGeneration) {
+            ffmpegStatus = cachedStatus;
+            encoderProbeComplete = false;
+        }
+        final boolean shouldLaunchEncoderProbe =
+                !encoderProbeComplete && !encoderProbeRunning;
+        if (shouldLaunchEncoderProbe) {
+            encoderProbeRunning = true;
+            encoderProbeStaleRetries = 0;
+        }
+
         Keyboard.enableRepeatEvents(true);
         buttonList.clear();
         layout.clear();
         textEntries.clear();
         colorEntries.clear();
         decorations.clear();
+        ffmpegStatusDecoration = null;
         actionButtons.clear();
         nextId = 100;
 
         config = RecordableConfig.get();
         config.sanitize();
-        ffmpegStatus = FfmpegBundleManager.detectFfmpeg();
 
         panelWidth = Math.max(340, Math.min((int) (width * 0.78D), 760));
         panelLeft = (width - panelWidth) / 2;
@@ -162,6 +198,9 @@ class RecordableSettingsScreenV109 extends GuiScreen {
         updateWidgetLayout();
         if (audioDevices.isEmpty() && !audioScanRunning) {
             refreshAudioDevices();
+        }
+        if (shouldLaunchEncoderProbe) {
+            launchEncoderProbe(generation, false);
         }
     }
 
@@ -245,54 +284,41 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 value -> "FPS: " + value,
                 "fps frame rate 30 60 120");
 
+        if (encoderProbeComplete
+                && !availableVideoEncoders.contains(config.encoder)) {
+            config.encoder = RecordableConfig.VideoEncoder.SOFTWARE;
+        }
         addCycle(
                 left,
                 widthAvailable,
                 y += ROW,
-                () -> "Video Encoder: "
-                        + (config.encoder == null
-                            ? RecordableConfig.VideoEncoder.SOFTWARE.displayName
-                            : config.encoder.displayName),
-                () -> config.encoder = nextEnum(
-                        config.encoder,
-                        RecordableConfig.VideoEncoder.values()),
-                () -> config.encoder = previousEnum(
-                        config.encoder,
-                        RecordableConfig.VideoEncoder.values()),
-                "encoder software x264 nvidia nvenc amd intel quicksync");
+                this::videoEncoderLabel,
+                () -> cycleVideoEncoder(true),
+                () -> cycleVideoEncoder(false),
+                "encoder software x264 nvidia nvenc amd intel quicksync",
+                () -> encoderProbeComplete && !encoderProbeRunning);
 
-        if (ffmpegStatus != null && ffmpegStatus.isFound()) {
-            addAction(
-                    left,
-                    widthAvailable,
-                    y += ROW,
-                    "Encoder: FFmpeg \u2713",
-                    this::detectFfmpeg,
-                    "ffmpeg encoder detect");
-        } else {
-            addAction(
-                    left,
-                    half,
-                    y += ROW,
-                    "Encoder: FFmpeg (NOT FOUND)",
-                    this::detectFfmpeg,
-                    "ffmpeg encoder detect missing");
-            addAction(
-                    right,
-                    half,
-                    y,
-                    FfmpegBundleManager.isDownloading()
-                            ? "Downloading... "
-                                + FfmpegBundleManager.getProgress()
-                                        .displayPercent()
-                            : "Download FFmpeg ("
-                                + FfmpegBundleManager
-                                        .getEstimatedDownloadSize()
-                                + ")",
-                    () -> mc.displayGuiScreen(
-                            new FfmpegDownloadScreen(this)),
-                    "download ffmpeg setup install");
-        }
+        addAction(
+                left,
+                half,
+                y += ROW,
+                this::ffmpegProbeButtonLabel,
+                this::detectFfmpeg,
+                "ffmpeg encoder detect loading",
+                () -> !encoderProbeRunning);
+        addAction(
+                right,
+                half,
+                y,
+                this::ffmpegDownloadButtonLabel,
+                () -> {
+                    if (canOpenFfmpegDownload()) {
+                        mc.displayGuiScreen(
+                                new FfmpegDownloadScreen(this));
+                    }
+                },
+                "download ffmpeg setup install",
+                this::canOpenFfmpegDownload);
 
         addText(
                 left,
@@ -334,13 +360,18 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 this::refreshAudioDevices,
                 "audio devices refresh scan");
 
-        addCycle(
+        addText(
                 left,
                 widthAvailable,
                 y += ROW,
-                () -> "Audio Device: " + deviceDisplay(false),
-                () -> cycleDevice(false, true),
-                () -> cycleDevice(false, false),
+                "Audio Device",
+                () -> isBlank(config.audioDevice)
+                        ? "auto"
+                        : config.audioDevice,
+                value -> config.audioDevice = isBlank(value)
+                        ? "auto"
+                        : value.trim(),
+                128,
                 "audio device stereo mix loopback");
 
         List<RecordableConfig.AudioEncoder> compatibleAudioEncoders =
@@ -522,7 +553,8 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 50,
                 200,
                 5,
-                value -> "Overlay Scale: " + value + "%",
+                value -> "Overlay Scale: " + value + "%"
+                        + (value == 100 ? " (Default)" : ""),
                 "overlay scale");
 
         int browseWidth = NativeFolderPicker.isSupported() ? 62 : 0;
@@ -615,13 +647,20 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 diskSpaceLine(),
                 y += ROW,
                 ThemeRole.MUTED);
-        addWrappedLabel(
-                ffmpegStatusLine(),
+        String ffmpegLine = ffmpegStatusLine();
+        ffmpegStatusDecoration = addWrappedLabel(
+                ffmpegLine,
                 y += 14,
-                ffmpegStatus != null && ffmpegStatus.isFound()
-                        ? ThemeRole.MUTED
-                        : ThemeRole.ERROR);
-        fullContentHeight = y + 18;
+                ffmpegStatusRole());
+        /*
+         * The missing-FFmpeg status commonly wraps to three lines. Reserve its
+         * measured height so the last line can scroll above the fixed footer.
+         */
+        fullContentHeight = y
+                + Math.max(
+                        wrappedHeight(ffmpegLine, widthAvailable),
+                        fontRendererObj.FONT_HEIGHT * 4)
+                + 8;
         contentHeight = fullContentHeight;
     }
 
@@ -660,13 +699,16 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 () -> config.overlayStyleHud =
                         config.overlayStyleHud.previous(),
                 "overlay style classic vhs synthwave none");
-        addToggle(
+        addAction(
                 left,
                 full,
                 y += ROW,
-                "Overlay Skin: " + config.uiTheme.displayName,
-                () -> config.overlaySkinEnabled,
-                value -> config.overlaySkinEnabled = value,
+                () -> "Overlay Skin: "
+                        + (config.overlaySkinEnabled
+                            ? config.uiTheme.displayName
+                            : "Off"),
+                () -> config.overlaySkinEnabled =
+                        !config.overlaySkinEnabled,
                 "overlay skin theme colors");
 
         if (config.overlayStyleHud
@@ -733,7 +775,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 left,
                 full,
                 y += 26,
-                "\u00a7fUI Theme: " + config.uiTheme.displayName,
+                "\u2638 UI Theme: " + config.uiTheme.displayName,
                 () -> openOptionalScreen("ThemeSettingsScreen"),
                 "ui theme vhs cinema neon minimal scanlines grain glitch");
 
@@ -742,7 +784,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 left,
                 full,
                 y += 14,
-                "Position & Colors Editor",
+                "\u270E Position & Colors Editor",
                 () -> mc.displayGuiScreen(
                         new OverlayPositionScreen(this)),
                 "position colors editor overlay drag resize");
@@ -757,7 +799,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 left,
                 full,
                 y += ROW,
-                "Streamer Mode",
+                "\u25C9 Streamer Mode",
                 () -> openOptionalScreen("StreamerModeScreen"),
                 "streamer mode censor privacy");
 
@@ -768,14 +810,14 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 left,
                 full,
                 y += 14,
-                "Performance",
+                "\u26A1 Performance",
                 () -> openOptionalScreen("PerformanceScreen"),
                 "performance optimizer device preset smooth motion fps");
         addAction(
                 left,
                 full,
                 y += ROW,
-                "Capture Test",
+                "\u2315 Capture Test",
                 () -> mc.displayGuiScreen(
                         new CaptureDiagnosticsScreen(this)),
                 "capture test diagnostics black blank frame");
@@ -1163,15 +1205,17 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 role));
     }
 
-    private void addWrappedLabel(
+    private Decoration addWrappedLabel(
             String text,
             int baseY,
             ThemeRole role) {
-        decorations.add(new Decoration(
+        Decoration decoration = new Decoration(
                 DecorationType.WRAPPED,
                 text,
                 baseY,
-                role));
+                role);
+        decorations.add(decoration);
+        return decoration;
     }
 
     private void addAction(
@@ -1197,6 +1241,24 @@ class RecordableSettingsScreenV109 extends GuiScreen {
             Supplier<String> label,
             Runnable action,
             String keywords) {
+        addAction(
+                x,
+                widthValue,
+                baseY,
+                label,
+                action,
+                keywords,
+                () -> true);
+    }
+
+    private void addAction(
+            int x,
+            int widthValue,
+            int baseY,
+            Supplier<String> label,
+            Runnable action,
+            String keywords,
+            BooleanSupplier enabled) {
         ActionButton button = new ActionButton(
                 nextId++,
                 x,
@@ -1206,7 +1268,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 label,
                 action,
                 null,
-                () -> true);
+                enabled);
         register(button, baseY, keywords);
     }
 
@@ -1262,6 +1324,26 @@ class RecordableSettingsScreenV109 extends GuiScreen {
             Runnable forward,
             Runnable backward,
             String keywords) {
+        addCycle(
+                x,
+                widthValue,
+                baseY,
+                label,
+                forward,
+                backward,
+                keywords,
+                () -> true);
+    }
+
+    private void addCycle(
+            int x,
+            int widthValue,
+            int baseY,
+            Supplier<String> label,
+            Runnable forward,
+            Runnable backward,
+            String keywords,
+            BooleanSupplier enabled) {
         ActionButton button = new ActionButton(
                 nextId++,
                 x,
@@ -1271,7 +1353,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 label,
                 forward,
                 backward,
-                () -> true);
+                enabled);
         register(button, baseY, keywords);
     }
 
@@ -1586,7 +1668,16 @@ class RecordableSettingsScreenV109 extends GuiScreen {
         super.handleMouseInput();
         int wheel = Mouse.getEventDWheel();
         if (wheel != 0) {
-            scrollBy(wheel > 0 ? -20 : 20);
+            /*
+             * LWJGL 2 reports multiples of 120 for a normal Windows wheel.
+             * Preserve the magnitude so fast wheel input advances like 26.2.
+             */
+            int notches = (int) Math.max(
+                    1L,
+                    Math.min(
+                            20L,
+                            (Math.abs((long) wheel) + 119L) / 120L));
+            scrollBy((wheel > 0 ? -20 : 20) * notches);
         }
     }
 
@@ -1604,6 +1695,9 @@ class RecordableSettingsScreenV109 extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        screenClosed = true;
+        screenGeneration++;
+        encoderProbeRunning = false;
         for (TextEntry entry : textEntries) {
             entry.commit();
         }
@@ -1759,6 +1853,7 @@ class RecordableSettingsScreenV109 extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         ThemeColors colors = colors();
         ThemePreset preset = config.uiTheme == null
                 ? ThemePreset.VHS
@@ -1841,14 +1936,228 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                     panelBottom - 12,
                     statusError ? colors.textError : colors.textMuted);
         }
+        if ((config.uiTheme == ThemePreset.VHS
+                || config.uiTheme == ThemePreset.NEON)
+                && RecordingManager.getInstance().isRecording()) {
+            ThemedPanel.drawVhsStatusBadge(
+                    fontRendererObj,
+                    "\u25CF REC",
+                    panelLeft + panelWidth - 44,
+                    panelTop - 3,
+                    true);
+        }
         drawScrollbar(colors);
+        drawSettingsTooltip(mouseX, mouseY);
+    }
+
+    private void drawSettingsTooltip(int mouseX, int mouseY) {
+        String tooltip = null;
+        for (ActionButton button : actionButtons.values()) {
+            if (button.visible && contains(button, mouseX, mouseY)) {
+                tooltip = tooltipForButton(button.displayString);
+                if (!isBlank(tooltip)) {
+                    break;
+                }
+            }
+        }
+        if (isBlank(tooltip)) {
+            for (TextEntry entry : textEntries) {
+                GuiTextField field = entry.field;
+                if (field.getVisible()
+                        && mouseX >= entry.x
+                        && mouseX < entry.x + entry.width
+                        && mouseY >= field.yPosition
+                        && mouseY < field.yPosition + WIDGET_HEIGHT) {
+                    if ("Rename File Name".equals(entry.label)) {
+                        tooltip = "Name for new recordings. Place these "
+                                + "tokens where you want them:\n\n"
+                                + "{datetime} -> 20250101-134501\n"
+                                + "{date} -> 20250101\n"
+                                + "{time} -> 134501\n"
+                                + "{world} -> server or world name\n"
+                                + "{player} -> your player name";
+                    } else if ("Audio Device".equals(entry.label)) {
+                        tooltip = "System audio device name. Use auto to "
+                                + "detect Stereo Mix, a monitor source, or "
+                                + "the active OpenAL loopback automatically.";
+                    }
+                    break;
+                }
+            }
+        }
+        if (isBlank(tooltip)) {
+            return;
+        }
+
+        List<String> lines = new ArrayList<String>();
+        for (String paragraph : tooltip.split("\\n", -1)) {
+            if (paragraph.isEmpty()) {
+                lines.add("");
+            } else {
+                lines.addAll(
+                        fontRendererObj.listFormattedStringToWidth(
+                                paragraph,
+                                Math.min(180, Math.max(120, width - 40))));
+            }
+        }
+        drawHoveringText(lines, mouseX, mouseY, fontRendererObj);
+    }
+
+    private String tooltipForButton(String displayLabel) {
+        String label = stripFormatting(displayLabel);
+        if (label.startsWith("Output:")) {
+            return "MP4/MKV/MOV use H.264 (fast, hardware-accelerated). "
+                    + "WebM uses VP9: smaller files but CPU-heavy software "
+                    + "encoding, recommended for desktop only.";
+        }
+        if (label.startsWith("Video Encoder:")) {
+            return "Select video encoder backend.";
+        }
+        if (label.startsWith("Encoder: FFmpeg")) {
+            return "FFmpeg is the sole encoder. Click to re-detect after "
+                    + "installing or downloading it.\n\nFFmpeg status: "
+                    + (ffmpegStatus == null
+                        ? "not checked"
+                        : ffmpegStatus.isFound()
+                            ? ffmpegStatus.getVersion()
+                            : "not found");
+        }
+        if (label.startsWith("Download FFmpeg")) {
+            return "Download and verify the official FFmpeg essentials "
+                    + "bundle used by Record-able.";
+        }
+        if (label.contains("audio devices")
+                || label.startsWith("Audio: Not Available")) {
+            return audioStatus + "\nClick to re-scan audio devices.";
+        }
+        if (label.startsWith("Audio Device:")) {
+            return "Select the game/system audio source used for recordings.";
+        }
+        if (label.startsWith("Audio Encoder:")) {
+            return "Select the audio codec compatible with the current "
+                    + "recording container.";
+        }
+        if (label.startsWith("Mic:")) {
+            return "Select which microphone to record. Auto uses the default "
+                    + "available capture device.";
+        }
+        if (label.startsWith("Push to Talk:")) {
+            return tr("screen.recordable.settings.push_to_talk_hint");
+        }
+        if (label.startsWith("Noise Suppression:")) {
+            return tr("screen.recordable.settings.noise_suppression_hint");
+        }
+        if ("Test Mic".equals(label)) {
+            return tr("screen.recordable.settings.test_mic_hint");
+        }
+        if (label.startsWith("Audio Delay:")) {
+            return "Fine-tune audio sync if needed. Usually not required.\n\n"
+                    + "Auto: 0ms (recommended; sync is automatic)\n"
+                    + "None: 0ms (explicit zero)\n"
+                    + "Positive values delay audio; negative values advance it.";
+        }
+        if (label.startsWith("Show Overlay:")) {
+            return "Shows or hides the recording info overlay on your screen. "
+                    + "Use Bake in Overlay in Streamer Mode to control whether "
+                    + "it is saved into the video.";
+        }
+        if (label.startsWith("Stop on Disconnect:")) {
+            return tr("screen.recordable.settings.stop_on_disconnect.tooltip");
+        }
+        if (label.startsWith("Overlay Position:")) {
+            return "Where to place the recording overlay on screen.\n\n"
+                    + "Top-Left: classic position\n"
+                    + "Top-Right: right side\n"
+                    + "Bottom positions keep it near the hotbar.";
+        }
+        if ("Browse".equals(label)) {
+            return "Pick a folder anywhere on your PC to save recordings.";
+        }
+        if (label.startsWith("Auto Record:")) {
+            return "Master switch for automatic recording.\n"
+                    + "Starts and stops based on the Start/Stop triggers below.";
+        }
+        if (label.startsWith("Overlay Style:")) {
+            return "On-screen overlay visible while recording.\n"
+                    + "Speed-Runner's Classic = info panel. VHS = camcorder "
+                    + "look. None = hidden.";
+        }
+        if (label.startsWith("Overlay Skin:")) {
+            return "Skins the on-screen overlay with the colors of your "
+                    + "selected UI Theme.\nOn = follows the UI Theme. "
+                    + "Off = uses its own default colors.";
+        }
+        if (label.contains("UI Theme:")) {
+            return "Customize the mod's visual theme.\n"
+                    + "Choose between VHS retro, Cinema film, Neon synthwave, "
+                    + "and more.\nToggle scanlines, film grain, glitch effects "
+                    + "and animations.";
+        }
+        if (label.contains("Position & Colors Editor")) {
+            return "Open the visual editor to reposition overlay elements and "
+                    + "customize colors.\n\nDrag elements to move them. "
+                    + "Right-click an element to reset it. ESC cancels changes.";
+        }
+        if (label.contains("Performance")
+                && !label.startsWith("Performance:")) {
+            return "Device presets, performance optimizer, smooth motion, "
+                    + "frame pooling, FPS targets and performance stats - all "
+                    + "in one place.";
+        }
+        if (label.contains("Capture Test")) {
+            return "Runs a capture self-test and checks for problems that cause "
+                    + "black or blank recordings: framebuffer size mismatches, "
+                    + "empty frames and a stuck capture source.";
+        }
+        if (label.startsWith("Auto-Clipping:")) {
+            return "Automatically record short clips when specific events "
+                    + "occur (achievements, deaths, boss kills, etc.).";
+        }
+        if (label.startsWith("Montage Seconds Before:")) {
+            return "Seconds of gameplay captured before the finishing blow in "
+                    + "a kill montage clip.";
+        }
+        if (label.startsWith("Montage Seconds After:")) {
+            return "Seconds captured after a kill so the clip keeps more of "
+                    + "the aftermath.";
+        }
+        if (label.startsWith("Auto-Clip Audio:")) {
+            return tr("screen.recordable.settings.autoclip_audio.tooltip");
+        }
+        if (label.startsWith("Auto-Record Playback:")) {
+            return tr("screen.recordable.settings.compat_autorecord.tooltip");
+        }
+        if (label.startsWith("Yield Audio to Replay:")) {
+            return tr("screen.recordable.settings.compat_yield_audio.tooltip");
+        }
+        return null;
+    }
+
+    private static String stripFormatting(String value) {
+        if (value == null || value.indexOf('\u00A7') < 0) {
+            return value == null ? "" : value;
+        }
+        StringBuilder plain = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character == '\u00A7' && index + 1 < value.length()) {
+                index++;
+            } else {
+                plain.append(character);
+            }
+        }
+        return plain.toString();
     }
 
     private void drawDecoration(
             Decoration decoration,
             ThemeColors colors) {
         int y = panelBodyTop + decoration.baseY - scrollOffset;
-        if (y < panelBodyTop - 18 || y > panelBodyBottom + 2) {
+        int clipMargin = decoration.type == DecorationType.WRAPPED
+                ? 18
+                : 12;
+        if (y < panelBodyTop - clipMargin
+                || y > panelBodyBottom + 2) {
             return;
         }
         int x = panelLeft + 14;
@@ -2262,40 +2571,255 @@ class RecordableSettingsScreenV109 extends GuiScreen {
     }
 
     private String ffmpegStatusLine() {
+        String platform =
+                PlatformUtils.detectPlatform().getDisplayName();
+        if (encoderProbeRunning || !encoderProbeComplete) {
+            return "Platform: " + platform
+                    + " | FFmpeg: Detecting encoders...";
+        }
         if (ffmpegStatus != null && ffmpegStatus.isFound()) {
-            return "Platform: " + PlatformUtils.detectPlatform().name()
+            return "Platform: " + platform
                     + " | FFmpeg: " + ffmpegStatus.getVersion();
         }
         String error = ffmpegStatus == null
                 ? FfmpegBundleManager.getLastError()
                 : ffmpegStatus.getError();
-        return "Platform: " + PlatformUtils.detectPlatform().name()
-                + " | FFmpeg: "
-                + (isBlank(error) ? "Not found" : trim(error, 80));
+        String detail = ffmpegFailureDetail(error);
+        return "Platform: " + platform
+                + " | FFmpeg: Not found"
+                + (isBlank(detail)
+                    ? ""
+                    : ": FFmpeg not found: " + detail);
+    }
+
+    private String ffmpegProbeButtonLabel() {
+        if (encoderProbeRunning || !encoderProbeComplete) {
+            return "Encoder: Detecting...";
+        }
+        return ffmpegStatus != null && ffmpegStatus.isFound()
+                ? "Encoder: FFmpeg \u2713"
+                : "Encoder: Not Found";
+    }
+
+    private String ffmpegDownloadButtonLabel() {
+        if (FfmpegBundleManager.isDownloading()) {
+            return "Downloading... "
+                    + FfmpegBundleManager.getProgress().displayPercent();
+        }
+        if (encoderProbeRunning || !encoderProbeComplete) {
+            return "Checking FFmpeg...";
+        }
+        if (ffmpegStatus != null && ffmpegStatus.isFound()) {
+            return "FFmpeg Ready \u2713";
+        }
+        return "Download FFmpeg ("
+                + FfmpegBundleManager.getEstimatedDownloadSize()
+                + ")";
+    }
+
+    private boolean canOpenFfmpegDownload() {
+        return encoderProbeComplete
+                && !encoderProbeRunning
+                && !FfmpegBundleManager.isDownloading()
+                && (ffmpegStatus == null
+                    || !ffmpegStatus.isFound());
+    }
+
+    private ThemeRole ffmpegStatusRole() {
+        return encoderProbeRunning
+                || !encoderProbeComplete
+                || (ffmpegStatus != null
+                    && ffmpegStatus.isFound())
+                ? ThemeRole.MUTED
+                : ThemeRole.ERROR;
+    }
+
+    /**
+     * The probe checks the managed absolute path before PATH. Surface the
+     * actionable PATH failure rather than an unbroken candidate path that
+     * cannot wrap inside the settings panel.
+     */
+    private static String ffmpegFailureDetail(String error) {
+        if (isBlank(error)) {
+            return "";
+        }
+        String detail = error.trim();
+        int pathProbe = detail.lastIndexOf("; ffmpeg: ");
+        if (pathProbe >= 0) {
+            detail = detail.substring(
+                    pathProbe + "; ffmpeg: ".length());
+        } else if (detail.startsWith("ffmpeg: ")) {
+            detail = detail.substring("ffmpeg: ".length());
+        }
+        if ("FFmpeg was not found.".equalsIgnoreCase(detail)
+                || "not executable".equalsIgnoreCase(detail)) {
+            return "";
+        }
+        return trim(detail, 180);
     }
 
     private void detectFfmpeg() {
+        if (!isCurrentScreen()) {
+            return;
+        }
+        if (encoderProbeRunning) {
+            setStatus("Encoder detection is already running...", false);
+            return;
+        }
         setStatus("Detecting FFmpeg...", false);
+        encoderProbeComplete = false;
+        encoderProbeRunning = true;
+        encoderProbeStaleRetries = 0;
+        refreshEncoderProbeControls();
+        launchEncoderProbe(screenGeneration, true);
+    }
+
+    private void launchEncoderProbe(
+            final int generation,
+            final boolean invalidateCache) {
         Thread worker = new Thread(() -> {
-            FfmpegBundleManager.invalidateCache();
-            final FfmpegBundleManager.FfmpegStatus detected =
-                    FfmpegBundleManager.detectFfmpeg();
-            mc.addScheduledTask(() -> {
-                ffmpegStatus = detected;
+            FfmpegBundleManager.FfmpegStatus detected = null;
+            List<RecordableConfig.VideoEncoder> encoders =
+                    Collections.singletonList(
+                            RecordableConfig.VideoEncoder.SOFTWARE);
+            String failure = null;
+            long detectedGeneration = Long.MIN_VALUE;
+            try {
+                if (invalidateCache) {
+                    FfmpegBundleManager.invalidateCache();
+                }
+                detected = FfmpegBundleManager.detectFfmpeg();
+                detectedGeneration =
+                        FfmpegBundleManager.getStatusGeneration(
+                                detected);
+                if (detected.isFound()) {
+                    encoders = FFmpegEncoder.detectAvailableEncoders();
+                }
+            } catch (Throwable throwable) {
+                failure = safeMessage(throwable);
+                RecordableMod.LOGGER.warn(
+                        "Unable to probe FFmpeg encoders for settings.",
+                        throwable);
+            }
+
+            final FfmpegBundleManager.FfmpegStatus finalDetected =
+                    detected == null
+                            ? FfmpegBundleManager.getCachedFfmpegStatus()
+                            : detected;
+            final List<RecordableConfig.VideoEncoder> finalEncoders =
+                    immutableEncoderChoices(encoders);
+            final String finalFailure = failure;
+            final long finalDetectedGeneration = detectedGeneration;
+            final long finalResultGeneration =
+                    FfmpegBundleManager.getStatusGeneration(
+                            finalDetected);
+            final boolean exactResultKey =
+                    finalDetectedGeneration >= 0L
+                    && finalDetectedGeneration
+                        == finalResultGeneration;
+            Minecraft.getMinecraft().addScheduledTask(() -> {
+                if (!isProbeTarget(generation)) {
+                    return;
+                }
+                long currentGeneration =
+                        FfmpegBundleManager.getCacheGeneration();
+                if (!exactResultKey
+                        || finalResultGeneration != currentGeneration
+                        || !FfmpegBundleManager.isCurrentFfmpegStatus(
+                                finalDetected,
+                                finalResultGeneration)) {
+                    encoderProbeRunning = false;
+                    encoderProbeComplete = false;
+                    ffmpegStatus =
+                            FfmpegBundleManager.getCachedFfmpegStatus();
+                    setStatus(
+                            "FFmpeg changed while detecting encoders; "
+                                    + "retrying...",
+                            false);
+                    refreshEncoderProbeControls();
+                    if (encoderProbeStaleRetries
+                            < MAX_STALE_ENCODER_PROBE_RETRIES) {
+                        encoderProbeStaleRetries++;
+                        retryEncoderProbe(generation);
+                    } else {
+                        availableVideoEncoders =
+                                Collections.singletonList(
+                                    RecordableConfig.VideoEncoder.SOFTWARE);
+                        config.encoder =
+                                RecordableConfig.VideoEncoder.SOFTWARE;
+                        encoderProbeComplete = true;
+                        encoderProbeCacheGeneration = currentGeneration;
+                        setStatus(
+                                "Encoder detection changed repeatedly; "
+                                        + "using Software until re-detected.",
+                                true);
+                        refreshEncoderProbeControls();
+                    }
+                    return;
+                }
+                ffmpegStatus = finalDetected;
+                availableVideoEncoders = finalEncoders;
+                encoderProbeRunning = false;
+                encoderProbeComplete = true;
+                encoderProbeStaleRetries = 0;
+                encoderProbeCacheGeneration =
+                        finalResultGeneration;
+                if (!availableVideoEncoders.contains(config.encoder)) {
+                    config.encoder =
+                            RecordableConfig.VideoEncoder.SOFTWARE;
+                }
+                boolean found = finalDetected != null
+                        && finalDetected.isFound();
                 setStatus(
-                        detected.isFound()
+                        finalFailure != null
+                                ? "Encoder detection failed: "
+                                    + finalFailure
+                            : found
                                 ? "\u2713 FFmpeg detected: "
-                                    + detected.getVersion()
+                                    + finalDetected.getVersion()
                                 : "FFmpeg was not found.",
-                        !detected.isFound());
-                int saved = scrollOffset;
-                initGui();
-                scrollOffset = saved;
-                updateWidgetLayout();
+                        finalFailure != null || !found);
+                refreshEncoderProbeControls();
             });
-        }, "Recordable-Settings-FfmpegProbe");
+        }, "Recordable-Settings-EncoderProbe");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private void retryEncoderProbe(int generation) {
+        if (!isProbeTarget(generation)) {
+            return;
+        }
+        encoderProbeRunning = true;
+        launchEncoderProbe(generation, false);
+    }
+
+    /**
+     * Applies probe presentation in place. In particular, this does not call
+     * initGui or touch text fields, focus/cursor state, or scrollOffset.
+     */
+    private void refreshEncoderProbeControls() {
+        if (ffmpegStatusDecoration != null) {
+            ffmpegStatusDecoration.text = ffmpegStatusLine();
+            ffmpegStatusDecoration.role = ffmpegStatusRole();
+        }
+        for (ActionButton button : actionButtons.values()) {
+            button.refreshLabel();
+            if (button.visible) {
+                button.enabled = button.dynamicEnabled();
+            }
+        }
+    }
+
+    private boolean isProbeTarget(int generation) {
+        return generation == screenGeneration
+                && !screenClosed
+                && isCurrentScreen();
+    }
+
+    private boolean isCurrentScreen() {
+        Minecraft client = Minecraft.getMinecraft();
+        return client != null && client.currentScreen == this;
     }
 
     private void refreshAudioDevices() {
@@ -2612,6 +3136,100 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 (index - 1 + values.length) % values.length];
     }
 
+    private String videoEncoderLabel() {
+        if (encoderProbeRunning || !encoderProbeComplete) {
+            return "Video Encoder: Detecting...";
+        }
+        if (ffmpegStatus == null || !ffmpegStatus.isFound()) {
+            return "Video Encoder: Software (FFmpeg unavailable)";
+        }
+        return "Video Encoder: " + encoderRuntimeLabel(config.encoder);
+    }
+
+    private void cycleVideoEncoder(boolean forward) {
+        if (encoderProbeRunning || !encoderProbeComplete) {
+            setStatus("Encoder detection is still running...", false);
+            return;
+        }
+        List<RecordableConfig.VideoEncoder> choices =
+                availableVideoEncoders;
+        config.encoder = forward
+                ? nextVideoEncoder(choices, config.encoder)
+                : previousVideoEncoder(choices, config.encoder);
+    }
+
+    private static String encoderRuntimeLabel(
+            RecordableConfig.VideoEncoder encoder) {
+        RecordableConfig.VideoEncoder value = encoder == null
+                ? RecordableConfig.VideoEncoder.SOFTWARE
+                : encoder;
+        String label = value.displayName;
+        if (value == RecordableConfig.VideoEncoder.SOFTWARE) {
+            String codec = FFmpegEncoder.getCachedSoftwareCodec();
+            if (!isBlank(codec)) {
+                label += " [" + codec + "]";
+            }
+        }
+        return label;
+    }
+
+    private static RecordableConfig.VideoEncoder nextVideoEncoder(
+            List<RecordableConfig.VideoEncoder> values,
+            RecordableConfig.VideoEncoder current) {
+        if (values == null || values.isEmpty()) {
+            return RecordableConfig.VideoEncoder.SOFTWARE;
+        }
+        int index = values.indexOf(current);
+        return values.get(index < 0 ? 0 : (index + 1) % values.size());
+    }
+
+    private static RecordableConfig.VideoEncoder previousVideoEncoder(
+            List<RecordableConfig.VideoEncoder> values,
+            RecordableConfig.VideoEncoder current) {
+        if (values == null || values.isEmpty()) {
+            return RecordableConfig.VideoEncoder.SOFTWARE;
+        }
+        int index = values.indexOf(current);
+        return values.get(index < 0
+                ? 0
+                : (index - 1 + values.size()) % values.size());
+    }
+
+    private static List<RecordableConfig.VideoEncoder>
+            immutableEncoderChoices(
+                    List<RecordableConfig.VideoEncoder> values) {
+        Set<RecordableConfig.VideoEncoder> choices =
+                new LinkedHashSet<RecordableConfig.VideoEncoder>();
+        choices.add(RecordableConfig.VideoEncoder.SOFTWARE);
+        if (values != null) {
+            for (RecordableConfig.VideoEncoder value : values) {
+                if (value != null) {
+                    choices.add(value);
+                }
+            }
+        }
+        return Collections.unmodifiableList(
+                new ArrayList<RecordableConfig.VideoEncoder>(choices));
+    }
+
+    private static boolean sameFfmpegStatus(
+            FfmpegBundleManager.FfmpegStatus first,
+            FfmpegBundleManager.FfmpegStatus second) {
+        return first == second
+                || (first != null
+                    && second != null
+                    && first.isFound() == second.isFound()
+                    && sameText(
+                            first.getExecutable(),
+                            second.getExecutable())
+                    && sameText(first.getVersion(), second.getVersion())
+                    && sameText(first.getError(), second.getError()));
+    }
+
+    private static boolean sameText(String first, String second) {
+        return first == null ? second == null : first.equals(second);
+    }
+
     private List<RecordableConfig.AudioEncoder> compatibleAudioEncoders() {
         List<RecordableConfig.AudioEncoder> compatible =
                 new ArrayList<RecordableConfig.AudioEncoder>();
@@ -2763,6 +3381,9 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 int mouseX,
                 int mouseY) {
             refreshLabel();
+            if (visible) {
+                enabled = dynamicEnabled();
+            }
             super.drawButton(minecraft, mouseX, mouseY);
         }
     }
@@ -2892,6 +3513,8 @@ class RecordableSettingsScreenV109 extends GuiScreen {
     }
 
     private final class TextEntry {
+        final int x;
+        final int width;
         final String label;
         final Supplier<String> getter;
         final Consumer<String> setter;
@@ -2906,6 +3529,8 @@ class RecordableSettingsScreenV109 extends GuiScreen {
                 Supplier<String> getter,
                 Consumer<String> setter,
                 int maximumLength) {
+            this.x = x;
+            this.width = width;
             this.label = label;
             this.getter = getter;
             this.setter = setter;
@@ -2999,9 +3624,9 @@ class RecordableSettingsScreenV109 extends GuiScreen {
 
     private static final class Decoration {
         final DecorationType type;
-        final String text;
+        String text;
         final int baseY;
-        final ThemeRole role;
+        ThemeRole role;
 
         Decoration(
                 DecorationType type,

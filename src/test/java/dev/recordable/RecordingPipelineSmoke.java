@@ -62,7 +62,11 @@ public final class RecordingPipelineSmoke {
         config.notifyReplayBuffer = false;
         config.notifyWarnings = false;
         config.sanitize();
-        FfmpegBundleManager.invalidateCache();
+        verifyPcmPauseBoundaryClipping();
+        verifySoftwareCodecCacheRefresh(
+                config,
+                ffmpeg,
+                root);
 
         FFmpegEncoder encoder = new FFmpegEncoder(
                 config,
@@ -119,10 +123,23 @@ public final class RecordingPipelineSmoke {
             throw new IllegalStateException(
                     "Final recording is missing or empty: " + output);
         }
-        if (!output.getFileName().toString()
-                .startsWith("recordable-on-player-kill-")) {
+        Path expectedAutoClipDirectory =
+                StorageManager.getAutoClipTriggerDirectory(
+                        config,
+                        "on-player-kill")
+                        .toAbsolutePath()
+                        .normalize();
+        Path actualParent = output.getParent() == null
+                ? null
+                : output.getParent()
+                        .toAbsolutePath()
+                        .normalize();
+        if (!expectedAutoClipDirectory.equals(actualParent)
+                || !output.getFileName().toString()
+                        .startsWith("recordable-")) {
             throw new IllegalStateException(
-                    "Auto-clip prefix was not retained: " + output);
+                    "Auto-clip was not routed into its trigger folder: "
+                            + output);
         }
         System.out.println("RECORDABLE_PIPELINE_SMOKE_OK=" + output);
         System.out.println("WRITTEN_FRAMES=" + encoder.getWrittenFrames());
@@ -130,6 +147,189 @@ public final class RecordingPipelineSmoke {
 
         Path replayOutput = runReplaySmoke(config);
         System.out.println("RECORDABLE_REPLAY_SMOKE_OK=" + replayOutput);
+    }
+
+    private static void verifyPcmPauseBoundaryClipping() {
+        assertPcmRange(
+                "full interval",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_000L,
+                        2_000L,
+                        10),
+                0,
+                10);
+        assertPcmRange(
+                "exact interior interval",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_200L,
+                        1_800L,
+                        10),
+                2,
+                8);
+        assertPcmRange(
+                "fractional pause boundary",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_250L,
+                        1_750L,
+                        10),
+                3,
+                8);
+        assertPcmRange(
+                "exact exclusive end",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_000L,
+                        1_700L,
+                        10),
+                0,
+                7);
+        assertPcmRange(
+                "left-clipped interval",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        0L,
+                        1_500L,
+                        10),
+                0,
+                5);
+        assertPcmRange(
+                "touching interval",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        2_000L,
+                        2_500L,
+                        10),
+                0,
+                0);
+        assertPcmRange(
+                "reversed active interval",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_800L,
+                        1_200L,
+                        10),
+                0,
+                0);
+        assertPcmRange(
+                "invalid chunk",
+                AudioCaptureSession.clipPcmFrameRange(
+                        2_000L,
+                        2_000L,
+                        0L,
+                        Long.MAX_VALUE,
+                        10),
+                0,
+                0);
+        assertPcmRange(
+                "zero frames",
+                AudioCaptureSession.clipPcmFrameRange(
+                        1_000L,
+                        2_000L,
+                        1_000L,
+                        2_000L,
+                        0),
+                0,
+                0);
+    }
+
+    private static void assertPcmRange(
+            String description,
+            int[] actual,
+            int expectedStart,
+            int expectedEnd) {
+        if (actual == null
+                || actual.length != 2
+                || actual[0] != expectedStart
+                || actual[1] != expectedEnd) {
+            throw new IllegalStateException(
+                    "Unexpected PCM range for "
+                            + description
+                            + ": "
+                            + (actual == null
+                                    ? "null"
+                                    : actual[0] + ".." + actual[1])
+                            + " (expected "
+                            + expectedStart
+                            + ".."
+                            + expectedEnd
+                            + ")");
+        }
+    }
+
+    /**
+     * Reproduces the in-app installer transition in one JVM: settings first
+     * probes while FFmpeg is absent, then the managed executable appears.
+     * A cold recording start must use the official libx264/VP9 defaults
+     * without poisoning the cache, then asynchronous discovery must retain
+     * or replace those defaults with proven codecs in the same JVM.
+     */
+    private static void verifySoftwareCodecCacheRefresh(
+            RecordableConfig config,
+            Path ffmpeg,
+            Path root) throws Exception {
+        config.ffmpegPath =
+                root.resolve("missing-ffmpeg.exe").toString();
+        config.useBundledFfmpeg = false;
+        config.bundledFfmpegPath = "";
+        FfmpegBundleManager.invalidateCache();
+        FFmpegEncoder.detectAvailableEncoders();
+        if (!"mpeg4".equals(
+                FFmpegEncoder.getCachedSoftwareCodec())) {
+            throw new IllegalStateException(
+                    "Missing-FFmpeg software fallback was not mpeg4.");
+        }
+
+        config.ffmpegPath = ffmpeg.toString();
+        FfmpegBundleManager.invalidateCache();
+        FfmpegBundleManager.FfmpegStatus status =
+                FfmpegBundleManager.detectFfmpeg();
+        long generation =
+                FfmpegBundleManager.getStatusGeneration(status);
+        String cacheKeyBeforeColdStart =
+                FFmpegEncoder.getCachedSoftwareCodecKey();
+        String coldSoftware =
+                FFmpegEncoder.resolveSoftwareCodecForStartForTest(
+                        status,
+                        generation);
+        if (!"libx264".equals(coldSoftware)) {
+            throw new IllegalStateException(
+                    "Cold software start did not use libx264.");
+        }
+        String cacheKeyAfterColdStart =
+                FFmpegEncoder.getCachedSoftwareCodecKey();
+        if (cacheKeyBeforeColdStart == null
+                ? cacheKeyAfterColdStart != null
+                : !cacheKeyBeforeColdStart.equals(
+                        cacheKeyAfterColdStart)) {
+            throw new IllegalStateException(
+                    "Cold software fallback poisoned the codec cache.");
+        }
+        if (!"libvpx-vp9".equals(
+                FFmpegEncoder.resolveWebmCodec(
+                        generation,
+                        status.getExecutable()))) {
+            throw new IllegalStateException(
+                    "Cold WebM start did not use the official VP9 default.");
+        }
+
+        FFmpegEncoder.detectAvailableEncoders();
+        if (FfmpegBundleManager.supportsEncoder("libx264")
+                && !"libx264".equals(
+                        FFmpegEncoder.getCachedSoftwareCodec())) {
+            throw new IllegalStateException(
+                    "Software codec cache did not refresh to libx264 "
+                            + "after FFmpeg became available.");
+        }
     }
 
     private static void fillFrame(byte[] pixels, int frameIndex) {
@@ -177,6 +377,21 @@ public final class RecordingPipelineSmoke {
             throws Exception {
         ReplayBuffer replay = ReplayBuffer.getInstance();
         try {
+            int[] capped =
+                    ReplayBuffer.capSourceDimensions(3840, 2160);
+            if (capped[0] != 1280 || capped[1] != 720) {
+                throw new IllegalStateException(
+                        "Replay source cap was not 1280x720: "
+                                + capped[0] + "x" + capped[1]);
+            }
+            if (ReplayBuffer.resolveTargetFps(
+                    "high",
+                    2160,
+                    120) != 30) {
+                throw new IllegalStateException(
+                        "Replay frame-rate cap was not 30 FPS.");
+            }
+
             replay.start(WIDTH, HEIGHT, FPS, 3, "balanced");
             for (int index = 0; index < FPS * 2; index++) {
                 byte[] pixels = new byte[WIDTH * HEIGHT * 3];
@@ -197,6 +412,39 @@ public final class RecordingPipelineSmoke {
                         "Replay save was not accepted: " + result);
             }
 
+            /*
+             * Saving a snapshot must not freeze the rolling history. Feed
+             * timestamped frames immediately while the FFmpeg snapshot worker
+             * owns the pinned source chunks and verify that at least one was
+             * accepted into the continuing buffer.
+             */
+            long submittedBeforeSave =
+                    replay.getSubmittedFrameSequence();
+            long syntheticTimestamp =
+                    System.nanoTime() + 1_000_000_000L;
+            boolean observedActiveSave = false;
+            for (int index = 0; index < 12; index++) {
+                if (!replay.isSaving()) break;
+                observedActiveSave = true;
+                byte[] pixels = new byte[WIDTH * HEIGHT * 3];
+                fillFrame(
+                        pixels,
+                        index + FRAME_COUNT + FPS * 2);
+                replay.addFrame(
+                        pixels,
+                        WIDTH,
+                        HEIGHT,
+                        syntheticTimestamp
+                                + index * 34_000_000L);
+            }
+            if (!observedActiveSave
+                    || replay.getSubmittedFrameSequence()
+                        <= submittedBeforeSave) {
+                throw new IllegalStateException(
+                        "Replay history did not continue accepting frames "
+                                + "during snapshot save.");
+            }
+
             long saveDeadline = System.currentTimeMillis() + 60_000L;
             while (replay.isSaving()
                     && System.currentTimeMillis() < saveDeadline) {
@@ -208,7 +456,7 @@ public final class RecordingPipelineSmoke {
             }
 
             Path saved = newestMatching(
-                    config.getClipDirectory(),
+                    config.getOutputDirectory(),
                     "replay-smoke-",
                     "." + config.getFormat());
             if (saved == null || Files.size(saved) <= 0L) {

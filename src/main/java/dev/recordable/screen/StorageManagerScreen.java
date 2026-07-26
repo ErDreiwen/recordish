@@ -2,6 +2,7 @@ package dev.recordable.screen;
 
 import dev.recordable.RecordableConfig;
 import dev.recordable.StorageManager;
+import dev.recordable.theme.ThemedPanel;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -202,6 +203,7 @@ public final class StorageManagerScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
 
         int accent = 0xFF000000
                 | RecordableConfig.get().getMenuAccentColorRgb();

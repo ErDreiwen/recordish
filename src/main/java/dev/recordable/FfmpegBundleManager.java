@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -140,7 +141,11 @@ public final class FfmpegBundleManager {
         new CopyOnWriteArrayList<ProgressListener>();
     private static volatile DownloadProgress progress = new DownloadProgress("idle", 0L, 0L);
     private static volatile FfmpegStatus cachedStatus;
+    private static volatile String cachedCandidateKey;
     private static volatile String lastError;
+    private static final AtomicLong CACHE_GENERATION =
+        new AtomicLong();
+    private static volatile EncoderListingCache encoderListingCache;
     private static final Map<String, Boolean> ENCODER_PREFLIGHT =
         new HashMap<String, Boolean>();
 
@@ -157,76 +162,171 @@ public final class FfmpegBundleManager {
             .resolve(PlatformUtils.executableName("ffmpeg"));
     }
 
-    public static synchronized FfmpegStatus detectFfmpeg() {
-        RecordableConfig config = RecordableConfig.get();
-        List<String> candidates = new ArrayList<String>();
-        addCandidate(candidates, config.ffmpegPath);
-        addCandidate(candidates, System.getenv("RECORDABLE_FFMPEG_PATH"));
-        if (config.useBundledFfmpeg) {
-            addCandidate(candidates, config.bundledFfmpegPath);
-            addCandidate(
-                    candidates,
-                    getBundleDirectory()
-                            .resolve(PlatformUtils.executableName("ffmpeg"))
-                            .toString());
-        }
-        addCandidate(candidates, "ffmpeg");
-
-        if (cachedStatus != null
-                && cachedStatus.isFound()
-                && candidates.contains(cachedStatus.getExecutable())) {
-            return cachedStatus;
-        }
-        if (cachedStatus != null && cachedStatus.isFound()) {
-            cachedStatus = null;
-            ENCODER_PREFLIGHT.clear();
-        }
-        STATUS.set(Status.CHECKING);
-        RecordableMod.LOGGER.info(
-            "[FFmpeg] Starting executable probe across {} candidate(s).",
-            candidates.size());
-
-        StringBuilder failures = new StringBuilder();
-        for (String candidate : candidates) {
-            RecordableMod.LOGGER.info(
-                "[FFmpeg] Invoking probe: {} -hide_banner -version",
-                candidate);
-            FfmpegStatus result = probe(candidate);
-            if (result.isFound()) {
-                cachedStatus = result;
-                STATUS.set(Status.AVAILABLE);
-                if (!"ffmpeg".equals(candidate)) {
-                    config.bundledFfmpegPath = candidate;
+    public static FfmpegStatus detectFfmpeg() {
+        /*
+         * Never hold the cache monitor while a child process is running.
+         * Settings performs these probes on a worker, but recording starts on
+         * Minecraft's thread; a method-level monitor here would make that
+         * thread wait behind an unrelated 8-second version probe.
+         */
+        while (true) {
+            RecordableConfig config = RecordableConfig.get();
+            List<String> candidates = buildCandidateList(config);
+            String candidateKey = candidateKey(candidates);
+            long probeGeneration;
+            synchronized (FfmpegBundleManager.class) {
+                if (DOWNLOADING.get()) {
+                    return new FfmpegStatus(
+                            false,
+                            null,
+                            null,
+                            "FFmpeg is still downloading.");
                 }
+                if (cachedStatus != null
+                        && candidateKey.equals(cachedCandidateKey)) {
+                    return cachedStatus;
+                }
+                if (cachedStatus != null) {
+                    cachedStatus = null;
+                    cachedCandidateKey = null;
+                    advanceCacheGeneration();
+                }
+                probeGeneration = CACHE_GENERATION.get();
+                STATUS.set(Status.CHECKING);
+            }
+
+            RecordableMod.LOGGER.info(
+                "[FFmpeg] Starting executable probe across {} candidate(s).",
+                candidates.size());
+            StringBuilder failures = new StringBuilder();
+            FfmpegStatus detected = null;
+            String detectedCandidate = null;
+            for (String candidate : candidates) {
                 RecordableMod.LOGGER.info(
-                    "[FFmpeg] Probe succeeded: executable='{}', version='{}'.",
-                    candidate,
-                    result.getVersion());
+                    "[FFmpeg] Invoking probe: {} -hide_banner -version",
+                    candidate);
+                FfmpegStatus result = probe(candidate);
+                if (result.isFound()) {
+                    detected = result;
+                    detectedCandidate = candidate;
+                    break;
+                }
+                if (result.getError() != null) {
+                    RecordableMod.LOGGER.info(
+                        "[FFmpeg] Probe did not find a usable executable at '{}': {}",
+                        candidate,
+                        result.getError());
+                    if (failures.length() > 0) failures.append("; ");
+                    failures.append(candidate)
+                            .append(": ")
+                            .append(result.getError());
+                }
+            }
+
+            String failure = failures.length() == 0
+                    ? "FFmpeg was not found."
+                    : failures.toString();
+            FfmpegStatus result = detected == null
+                    ? new FfmpegStatus(false, null, null, failure)
+                    : detected;
+
+            synchronized (FfmpegBundleManager.class) {
+                /*
+                 * A concurrent probe may already have published this exact
+                 * candidate set. Reuse it instead of advancing the generation
+                 * a second time.
+                 */
+                if (cachedStatus != null
+                        && candidateKey.equals(cachedCandidateKey)) {
+                    return cachedStatus;
+                }
+                /*
+                 * Invalidation, installation, or another executable publish
+                 * makes this process result stale. Re-snapshot configuration
+                 * and retry without ever publishing the stale result.
+                 */
+                if (CACHE_GENERATION.get() != probeGeneration
+                        || DOWNLOADING.get()
+                        || !candidateKey.equals(candidateKey(
+                                buildCandidateList(
+                                        RecordableConfig.get())))) {
+                    if (DOWNLOADING.get()) {
+                        return new FfmpegStatus(
+                                false,
+                                null,
+                                null,
+                                "FFmpeg is still downloading.");
+                    }
+                    continue;
+                }
+
+                cachedStatus = result;
+                cachedCandidateKey = candidateKey;
+                advanceCacheGeneration();
+                if (result.isFound()) {
+                    STATUS.set(Status.AVAILABLE);
+                    lastError = null;
+                    if (!"ffmpeg".equals(detectedCandidate)) {
+                        config.bundledFfmpegPath = detectedCandidate;
+                    }
+                    RecordableMod.LOGGER.info(
+                        "[FFmpeg] Probe succeeded: executable='{}', version='{}'.",
+                        detectedCandidate,
+                        result.getVersion());
+                } else {
+                    lastError = failure;
+                    STATUS.set(Status.NOT_FOUND);
+                    RecordableMod.LOGGER.info(
+                        "[FFmpeg] Executable probe completed without finding FFmpeg: {}",
+                        failure);
+                }
                 return result;
             }
-            if (result.getError() != null) {
-                RecordableMod.LOGGER.info(
-                    "[FFmpeg] Probe did not find a usable executable at '{}': {}",
-                    candidate,
-                    result.getError());
-                if (failures.length() > 0) failures.append("; ");
-                failures.append(candidate).append(": ").append(result.getError());
-            }
         }
-
-        lastError = failures.length() == 0 ? "FFmpeg was not found." : failures.toString();
-        cachedStatus = new FfmpegStatus(false, null, null, lastError);
-        STATUS.set(Status.NOT_FOUND);
-        RecordableMod.LOGGER.info(
-            "[FFmpeg] Executable probe completed without finding FFmpeg: {}",
-            lastError);
-        return cachedStatus;
     }
 
     public static synchronized void invalidateCache() {
         cachedStatus = null;
-        ENCODER_PREFLIGHT.clear();
+        cachedCandidateKey = null;
+        advanceCacheGeneration();
         if (!DOWNLOADING.get()) STATUS.set(Status.NOT_FOUND);
+    }
+
+    /**
+     * Returns the last probe result without starting a process. GUI code uses
+     * this as an immediate loading-state hint before scheduling a real probe
+     * away from Minecraft's render thread.
+     */
+    public static FfmpegStatus getCachedFfmpegStatus() {
+        return cachedStatus;
+    }
+
+    public static long getCacheGeneration() {
+        return CACHE_GENERATION.get();
+    }
+
+    /**
+     * Returns the exact cache generation owning {@code status}, or {@code -1}
+     * when that probe result has already been invalidated or replaced.
+     */
+    public static synchronized long getStatusGeneration(
+            FfmpegStatus status) {
+        return !DOWNLOADING.get()
+                && status != null
+                && status == cachedStatus
+                ? CACHE_GENERATION.get()
+                : -1L;
+    }
+
+    /**
+     * Atomically validates an asynchronous probe result and its generation.
+     */
+    public static synchronized boolean isCurrentFfmpegStatus(
+            FfmpegStatus status,
+            long generation) {
+        return isCurrentFfmpegStatusLocked(
+                status,
+                generation);
     }
 
     public static String getFfprobeExecutable() {
@@ -244,15 +344,93 @@ public final class FfmpegBundleManager {
     }
 
     public static List<String> queryEncoders() {
-        FfmpegStatus status = detectFfmpeg();
-        if (!status.isFound()) return Collections.emptyList();
-        ProcessResult result = runCommand(asList(status.getExecutable(), "-hide_banner", "-encoders"), 10);
-        if (result.exitCode != 0) return Collections.emptyList();
-        List<String> available = new ArrayList<String>();
-        for (String encoder : new String[]{"libx264", "h264_nvenc", "h264_amf", "h264_qsv", "libvpx-vp9"}) {
-            if (result.output.contains(encoder)) available.add(encoder);
+        while (true) {
+            FfmpegStatus status = detectFfmpeg();
+            long generation = getStatusGeneration(status);
+            if (generation < 0L) {
+                if (DOWNLOADING.get()) {
+                    return Collections.emptyList();
+                }
+                continue;
+            }
+
+            synchronized (FfmpegBundleManager.class) {
+                if (!isCurrentFfmpegStatusLocked(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                EncoderListingCache cached =
+                        encoderListingCache;
+                if (cached != null
+                        && cached.generation == generation
+                        && sameExecutable(
+                                cached.executable,
+                                status.getExecutable())) {
+                    return cached.encoders;
+                }
+                if (!status.isFound()) {
+                    List<String> unavailable =
+                            Collections.emptyList();
+                    encoderListingCache =
+                            new EncoderListingCache(
+                                    generation,
+                                    null,
+                                    unavailable);
+                    return unavailable;
+                }
+            }
+
+            ProcessResult processResult = runCommand(
+                    asList(
+                            status.getExecutable(),
+                            "-hide_banner",
+                            "-encoders"),
+                    10);
+            List<String> available = new ArrayList<String>();
+            if (processResult.exitCode == 0) {
+                for (String encoder : new String[]{
+                        "libx264",
+                        "mpeg4",
+                        "libxvid",
+                        "h264_nvenc",
+                        "h264_amf",
+                        "h264_qsv",
+                        "libvpx-vp9",
+                        "libvpx"}) {
+                    if (encoderListingContains(
+                            processResult.output,
+                            encoder)) {
+                        available.add(encoder);
+                    }
+                }
+            }
+            List<String> immutable =
+                    Collections.unmodifiableList(available);
+
+            synchronized (FfmpegBundleManager.class) {
+                if (!isCurrentFfmpegStatusLocked(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                EncoderListingCache cached =
+                        encoderListingCache;
+                if (cached != null
+                        && cached.generation == generation
+                        && sameExecutable(
+                                cached.executable,
+                                status.getExecutable())) {
+                    return cached.encoders;
+                }
+                encoderListingCache =
+                        new EncoderListingCache(
+                                generation,
+                                status.getExecutable(),
+                                immutable);
+                return immutable;
+            }
         }
-        return available;
     }
 
     public static boolean supportsEncoder(String encoder) {
@@ -264,39 +442,185 @@ public final class FfmpegBundleManager {
      * often advertises NVENC/AMF/QSV even when the corresponding GPU or driver
      * is unavailable.
      */
-    public static synchronized boolean isEncoderUsable(
+    public static boolean isEncoderUsable(
             String encoder) {
-        FfmpegStatus status = detectFfmpeg();
-        if (!status.isFound()
-                || encoder == null
-                || encoder.trim().isEmpty()
-                || !supportsEncoder(encoder)) {
+        if (encoder == null || encoder.trim().isEmpty()) {
             return false;
         }
-        String key = status.getExecutable() + "\n" + encoder;
-        Boolean cached = ENCODER_PREFLIGHT.get(key);
-        if (cached != null) return cached.booleanValue();
+        while (true) {
+            FfmpegStatus status = detectFfmpeg();
+            long generation = getStatusGeneration(status);
+            if (generation < 0L) {
+                if (DOWNLOADING.get()) {
+                    return false;
+                }
+                continue;
+            }
+            if (!status.isFound()) {
+                return false;
+            }
+            String key = preflightKey(
+                    generation,
+                    status.getExecutable(),
+                    encoder);
+            synchronized (FfmpegBundleManager.class) {
+                if (!isCurrentFfmpegStatusLocked(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                Boolean cached =
+                        ENCODER_PREFLIGHT.get(key);
+                if (cached != null) {
+                    return cached.booleanValue();
+                }
+            }
 
-        ProcessResult result = runCommand(asList(
-            status.getExecutable(),
-            "-nostdin",
-            "-hide_banner",
-            "-loglevel", "error",
-            "-f", "lavfi",
-            "-i", "color=c=black:s=64x64:r=1",
-            "-frames:v", "1",
-            "-c:v", encoder,
-            "-f", "null",
-            "-"), 15);
-        boolean usable = result.exitCode == 0;
-        ENCODER_PREFLIGHT.put(key, Boolean.valueOf(usable));
-        if (!usable) {
-            RecordableMod.LOGGER.warn(
-                "FFmpeg encoder {} is listed but failed its device preflight: {}",
-                encoder,
-                firstLine(result.output));
+            List<String> listedEncoders = queryEncoders();
+            synchronized (FfmpegBundleManager.class) {
+                if (!isCurrentFfmpegStatusLocked(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                Boolean cached =
+                        ENCODER_PREFLIGHT.get(key);
+                if (cached != null) {
+                    return cached.booleanValue();
+                }
+                if (!listedEncoders.contains(encoder)) {
+                    ENCODER_PREFLIGHT.put(
+                            key,
+                            Boolean.FALSE);
+                    return false;
+                }
+            }
+
+            ProcessResult processResult = runCommand(asList(
+                status.getExecutable(),
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel", "error",
+                "-f", "lavfi",
+                /*
+                 * Current NVENC drivers reject 64x64 H.264 frames even when
+                 * the encoder is fully usable at recording resolutions. Keep
+                 * this probe small, but above the hardware minimum so
+                 * capability detection does not hide a valid NVIDIA encoder.
+                 */
+                "-i", "color=c=black:s=256x256:r=1",
+                "-frames:v", "1",
+                "-c:v", encoder,
+                "-f", "null",
+                "-"), 15);
+            boolean usable = processResult.exitCode == 0;
+            synchronized (FfmpegBundleManager.class) {
+                if (!isCurrentFfmpegStatusLocked(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                Boolean cached =
+                        ENCODER_PREFLIGHT.get(key);
+                if (cached != null) {
+                    return cached.booleanValue();
+                }
+                ENCODER_PREFLIGHT.put(
+                        key,
+                        Boolean.valueOf(usable));
+            }
+            if (!usable) {
+                RecordableMod.LOGGER.warn(
+                    "FFmpeg encoder {} is listed but failed its device preflight: {}",
+                    encoder,
+                    firstLine(processResult.output));
+            }
+            return usable;
         }
-        return usable;
+    }
+
+    /**
+     * Returns cached listing support for the current exact FFmpeg generation,
+     * or {@code null} when no listing has been populated. This never starts a
+     * process and is intentionally package-private for encoder startup and
+     * smoke-test assertions.
+     */
+    static synchronized Boolean getCachedEncoderSupport(
+            String encoder) {
+        FfmpegStatus status = cachedStatus;
+        return getCachedEncoderSupport(
+                CACHE_GENERATION.get(),
+                status == null ? null : status.getExecutable(),
+                encoder);
+    }
+
+    static synchronized Boolean getCachedEncoderSupport(
+            long generation,
+            String executable,
+            String encoder) {
+        if (encoder == null || encoder.trim().isEmpty()) {
+            return Boolean.FALSE;
+        }
+        EncoderListingCache cached = encoderListingCache;
+        FfmpegStatus status = cachedStatus;
+        if (cached == null
+                || status == null
+                || !status.isFound()
+                || generation != CACHE_GENERATION.get()
+                || cached.generation != generation
+                || !sameExecutable(
+                        executable,
+                        status.getExecutable())
+                || !sameExecutable(
+                        cached.executable,
+                        executable)) {
+            return null;
+        }
+        return Boolean.valueOf(cached.encoders.contains(encoder));
+    }
+
+    /**
+     * Returns a cached device-preflight result for the current exact FFmpeg
+     * generation, or {@code null} when that encoder has not been preflighted.
+     * No process is launched.
+     */
+    static synchronized Boolean getCachedEncoderUsability(
+            String encoder) {
+        FfmpegStatus status = cachedStatus;
+        return getCachedEncoderUsability(
+                CACHE_GENERATION.get(),
+                status == null ? null : status.getExecutable(),
+                encoder);
+    }
+
+    static synchronized Boolean getCachedEncoderUsability(
+            long generation,
+            String executable,
+            String encoder) {
+        FfmpegStatus status = cachedStatus;
+        if (status == null
+                || !status.isFound()
+                || encoder == null
+                || encoder.trim().isEmpty()
+                || generation != CACHE_GENERATION.get()
+                || !sameExecutable(
+                        executable,
+                        status.getExecutable())) {
+            return null;
+        }
+        return ENCODER_PREFLIGHT.get(preflightKey(
+                generation,
+                executable,
+                encoder));
+    }
+
+    static synchronized long getEncoderListingCacheGeneration() {
+        EncoderListingCache cached = encoderListingCache;
+        return cached == null ? -1L : cached.generation;
+    }
+
+    static synchronized int getEncoderPreflightCacheSize() {
+        return ENCODER_PREFLIGHT.size();
     }
 
     public static Status getStatus() {
@@ -399,47 +723,70 @@ public final class FfmpegBundleManager {
             RecordableMod.LOGGER.error("[FFmpeg] {}", lastError);
             return CompletableFuture.completedFuture(false);
         }
-        if (!DOWNLOADING.compareAndSet(false, true)) {
-            RecordableMod.LOGGER.info(
-                "[FFmpeg] A download is already in progress; the duplicate request was ignored.");
-            return CompletableFuture.completedFuture(false);
+        synchronized (FfmpegBundleManager.class) {
+            if (!DOWNLOADING.compareAndSet(false, true)) {
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] A download is already in progress; the duplicate request was ignored.");
+                return CompletableFuture.completedFuture(false);
+            }
+            /*
+             * Installing replaces the managed executable. Invalidate every
+             * executable-derived result in the same transition that makes the
+             * download visible, so no in-flight listing/preflight can publish
+             * against the file transaction.
+             */
+            cachedStatus = null;
+            cachedCandidateKey = null;
+            advanceCacheGeneration();
+            STATUS.set(Status.DOWNLOADING);
+            lastError = null;
         }
-        STATUS.set(Status.DOWNLOADING);
-        lastError = null;
         fireProgress("starting", 0L, 0L);
         return CompletableFuture.supplyAsync(() -> {
             try {
                 FfmpegStatus detected = installForCurrentPlatform(
                     getBundleDirectory());
                 synchronized (FfmpegBundleManager.class) {
+                    List<String> candidates = buildCandidateList(
+                            RecordableConfig.get());
                     cachedStatus = detected;
-                    ENCODER_PREFLIGHT.clear();
+                    cachedCandidateKey = candidates.contains(
+                            detected.getExecutable())
+                                    ? candidateKey(candidates)
+                                    : null;
+                    advanceCacheGeneration();
+                    lastError = null;
+                    STATUS.set(Status.AVAILABLE);
+                    DOWNLOADING.set(false);
                 }
                 fireProgress("done", 1L, 1L);
-                STATUS.set(Status.AVAILABLE);
                 RecordableMod.LOGGER.info(
                     "[FFmpeg] Download, extraction, and probe succeeded. "
                         + "FFmpeg is ready at '{}' ({}).",
                     detected.getExecutable(),
                     detected.getVersion());
                 return true;
-            } catch (Exception exception) {
+            } catch (Throwable exception) {
                 String failedPhase = progress.getPhase();
                 String detail = exception.getMessage() == null
                     ? exception.getClass().getSimpleName() : exception.getMessage();
-                lastError = detail
-                    + " Retry the download, or set a working executable in "
-                    + "Storage > Custom FFmpeg.";
-                STATUS.set(Status.ERROR);
+                synchronized (FfmpegBundleManager.class) {
+                    lastError = detail
+                        + " Retry the download, or set a working executable in "
+                        + "Storage > Custom FFmpeg.";
+                    STATUS.set(Status.ERROR);
+                    DOWNLOADING.set(false);
+                }
                 fireProgress("error", 0L, 0L);
                 RecordableMod.LOGGER.error(
                     "[FFmpeg] Download/install failed during phase '{}': {}",
                     failedPhase,
                     lastError,
                     exception);
+                if (exception instanceof Error) {
+                    throw (Error) exception;
+                }
                 return false;
-            } finally {
-                DOWNLOADING.set(false);
             }
         });
     }
@@ -1259,6 +1606,97 @@ public final class FfmpegBundleManager {
         }
     }
 
+    private static final class EncoderListingCache {
+        final long generation;
+        final String executable;
+        final List<String> encoders;
+
+        EncoderListingCache(
+                long generation,
+                String executable,
+                List<String> encoders) {
+            this.generation = generation;
+            this.executable = executable;
+            this.encoders = encoders;
+        }
+    }
+
+    /**
+     * Advances all executable-derived caches as one generation. Callers hold
+     * the class monitor whenever executable state is replaced or invalidated.
+     */
+    private static void advanceCacheGeneration() {
+        CACHE_GENERATION.incrementAndGet();
+        encoderListingCache = null;
+        ENCODER_PREFLIGHT.clear();
+    }
+
+    /**
+     * The caller holds {@code FfmpegBundleManager.class}.
+     */
+    private static boolean isCurrentFfmpegStatusLocked(
+            FfmpegStatus status,
+            long generation) {
+        return !DOWNLOADING.get()
+                && status != null
+                && status == cachedStatus
+                && generation == CACHE_GENERATION.get();
+    }
+
+    private static String preflightKey(
+            long generation,
+            String executable,
+            String encoder) {
+        return generation
+                + "\n"
+                + (executable == null ? "" : executable)
+                + "\n"
+                + encoder;
+    }
+
+    private static boolean sameExecutable(
+            String first,
+            String second) {
+        return first == null ? second == null : first.equals(second);
+    }
+
+    private static List<String> buildCandidateList(
+            RecordableConfig config) {
+        List<String> candidates = new ArrayList<String>();
+        addCandidate(candidates, config.ffmpegPath);
+        addCandidate(
+                candidates,
+                System.getenv("RECORDABLE_FFMPEG_PATH"));
+        if (config.useBundledFfmpeg) {
+            addCandidate(
+                    candidates,
+                    config.bundledFfmpegPath);
+            addCandidate(
+                    candidates,
+                    getBundleDirectory()
+                            .resolve(
+                                    PlatformUtils.executableName(
+                                            "ffmpeg"))
+                            .toString());
+        }
+        addCandidate(candidates, "ffmpeg");
+        return candidates;
+    }
+
+    private static String candidateKey(
+            List<String> candidates) {
+        StringBuilder key = new StringBuilder();
+        for (String candidate : candidates) {
+            if (key.length() > 0) {
+                key.append('\n');
+            }
+            key.append(candidate.length())
+                    .append(':')
+                    .append(candidate);
+        }
+        return key.toString();
+    }
+
     private static void addCandidate(List<String> values, String candidate) {
         if (candidate == null || candidate.trim().isEmpty()) return;
         String normalized = candidate.trim();
@@ -1274,6 +1712,21 @@ public final class FfmpegBundleManager {
     private static String firstLine(String value) {
         int newline = value.indexOf('\n');
         return (newline < 0 ? value : value.substring(0, newline)).trim();
+    }
+
+    private static boolean encoderListingContains(
+            String listing,
+            String encoder) {
+        if (listing == null || encoder == null) return false;
+        String[] lines = listing.split("\\r?\\n");
+        for (String line : lines) {
+            String[] fields = line.trim().split("\\s+", 3);
+            if (fields.length >= 2
+                    && encoder.equals(fields[1])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String sourceUrl(PlatformUtils.Platform platform) {

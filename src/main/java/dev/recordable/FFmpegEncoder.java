@@ -27,6 +27,8 @@ public final class FFmpegEncoder {
     private static final DateTimeFormatter FILE_TIME =
         DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
     private static final int MAX_DUPLICATES_PER_FRAME = 10;
+    private static volatile String cachedSoftwareCodec;
+    private static volatile String cachedSoftwareCodecKey;
 
     private final RecordableConfig config;
     private final int inputWidth;
@@ -97,18 +99,34 @@ public final class FFmpegEncoder {
         if (!status.isFound()) {
             throw new IOException(status.getError() == null ? "FFmpeg was not found." : status.getError());
         }
+        long ffmpegGeneration =
+                FfmpegBundleManager.getStatusGeneration(status);
 
-        Path outputDirectory = config.getOutputDirectory();
+        boolean autoClip = isAutoClipPrefix(filePrefix);
+        Path outputDirectory = autoClip
+                ? StorageManager.getAutoClipTriggerDirectory(
+                        config,
+                        filePrefix)
+                : config.getOutputDirectory();
+        if (outputDirectory == null) {
+            throw new IOException(
+                    "The recording output directory is not configured.");
+        }
         Files.createDirectories(outputDirectory);
         String stem = filePrefix.isEmpty()
                 ? RecordableConfig.resolveFilenamePattern(
                         config.filenamePattern)
-                : "recordable-" + filePrefix + "-"
-                        + FILE_TIME.format(LocalDateTime.now());
+                : autoClip
+                        ? "recordable-"
+                                + FILE_TIME.format(LocalDateTime.now())
+                        : "recordable-" + filePrefix + "-"
+                                + FILE_TIME.format(LocalDateTime.now());
         requestedOutput = uniquePath(outputDirectory, stem, config.getFormat());
         temporaryVideo = uniquePath(outputDirectory, stem + ".video", "mkv");
 
-        List<String> command = buildCommand(status.getExecutable());
+        List<String> command = buildCommand(
+                status,
+                ffmpegGeneration);
         RecordableMod.LOGGER.info("Starting FFmpeg video encoder: {}", redactCommand(command));
         process = new ProcessBuilder(command)
             .directory(outputDirectory.toFile())
@@ -189,8 +207,11 @@ public final class FFmpegEncoder {
         releaseQueuedFrames();
     }
 
-    private List<String> buildCommand(String executable) {
+    private List<String> buildCommand(
+            FfmpegBundleManager.FfmpegStatus status,
+            long ffmpegGeneration) throws IOException {
         List<String> command = new ArrayList<String>();
+        String executable = status.getExecutable();
         add(command, executable, "-hide_banner", "-loglevel", "warning", "-y");
         add(command, "-f", "rawvideo", "-pix_fmt", "rgb24");
         add(command, "-video_size", inputWidth + "x" + inputHeight);
@@ -209,16 +230,30 @@ public final class FFmpegEncoder {
         }
 
         if (config.isWebmFormat()) {
-            String webmCodec = FfmpegBundleManager.supportsEncoder("libvpx-vp9")
-                ? "libvpx-vp9" : "libvpx";
+            /*
+             * Command construction runs on Minecraft's recording thread. Use
+             * only an asynchronously populated listing here. The official
+             * V1-0.09 path selects libvpx-vp9 directly, so a cold cache uses
+             * that same bundled-FFmpeg default without launching a probe.
+             */
+            String webmCodec = resolveWebmCodec(
+                    ffmpegGeneration,
+                    executable);
             add(command, "-c:v", webmCodec, "-crf", Integer.toString(config.getVp9Crf()));
             add(command, "-b:v", config.isAutoBitrate() ? "0" : config.resolveBitrate(outputWidth, outputHeight));
             add(command, "-row-mt", "1", "-deadline", "realtime", "-cpu-used",
                 "performance".equals(config.quality) ? "8" : "5");
         } else {
-            RecordableConfig.VideoEncoder selected = resolveAvailableEncoder(config.encoder);
+            RecordableConfig.VideoEncoder selected =
+                    resolveAvailableEncoder(
+                            config.encoder,
+                            ffmpegGeneration,
+                            executable);
             String codec = selected == RecordableConfig.VideoEncoder.SOFTWARE
-                ? resolveSoftwareCodec() : selected.ffmpegCodec;
+                ? resolveSoftwareCodecForStart(
+                        status,
+                        ffmpegGeneration)
+                : selected.ffmpegCodec;
             add(command, "-c:v", codec);
             if (selected == RecordableConfig.VideoEncoder.SOFTWARE) {
                 if ("libx264".equals(codec)) {
@@ -257,23 +292,266 @@ public final class FFmpegEncoder {
         return command;
     }
 
-    private String resolveSoftwareCodec() {
-        if (FfmpegBundleManager.supportsEncoder("libx264")) return "libx264";
-        if (FfmpegBundleManager.supportsEncoder("mpeg4")) return "mpeg4";
-        if (FfmpegBundleManager.supportsEncoder("libxvid")) return "libxvid";
+    private static String resolveSoftwareCodec() {
+        /*
+         * Encoder discovery runs on the FFmpeg warmup/settings worker.
+         * Never retain FFmpegEncoder.class while detect/query waits for a
+         * child process: cold recording startup also needs this cache lock.
+         */
+        for (int attempt = 0; attempt < 2; attempt++) {
+            FfmpegBundleManager.FfmpegStatus status =
+                    FfmpegBundleManager.detectFfmpeg();
+            long generation =
+                    FfmpegBundleManager.getStatusGeneration(status);
+            String executableKey = softwareCodecCacheKey(
+                    status,
+                    generation);
+            synchronized (FFmpegEncoder.class) {
+                String cached = cachedSoftwareCodec;
+                if (cached != null
+                        && executableKey.equals(
+                                cachedSoftwareCodecKey)) {
+                    return cached;
+                }
+            }
+
+            String resolved;
+            if (!status.isFound()) {
+                resolved = "mpeg4";
+            } else {
+                List<String> encoders =
+                        FfmpegBundleManager.queryEncoders();
+                if (!FfmpegBundleManager.isCurrentFfmpegStatus(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                if (encoders.contains("libx264")) {
+                    resolved = "libx264";
+                } else if (encoders.contains("mpeg4")) {
+                    resolved = "mpeg4";
+                } else if (encoders.contains("libxvid")) {
+                    resolved = "libxvid";
+                } else {
+                    /*
+                     * MPEG-4 is built into normal FFmpeg distributions and is
+                     * the official mod's last-resort software fallback when
+                     * probing fails.
+                     */
+                    resolved = "mpeg4";
+                }
+            }
+
+            synchronized (FFmpegEncoder.class) {
+                if (!FfmpegBundleManager.isCurrentFfmpegStatus(
+                        status,
+                        generation)) {
+                    continue;
+                }
+                String cached = cachedSoftwareCodec;
+                if (cached != null
+                        && executableKey.equals(
+                                cachedSoftwareCodecKey)) {
+                    return cached;
+                }
+                cachedSoftwareCodec = resolved;
+                cachedSoftwareCodecKey = executableKey;
+                return resolved;
+            }
+        }
+
+        /*
+         * Repeated invalidation means no discovery result is authoritative.
+         * Return the safe fallback without poisoning the exact-generation
+         * cache; a later warmup can publish normally.
+         */
         return "mpeg4";
     }
 
-    private RecordableConfig.VideoEncoder resolveAvailableEncoder(RecordableConfig.VideoEncoder selected) {
+    /**
+     * Resolves the software fallback without probing. Recording startup calls
+     * this on Minecraft's thread, so only exact-generation listing data may
+     * improve the default MPEG-4 fallback.
+     */
+    private static String resolveSoftwareCodecForStart(
+            FfmpegBundleManager.FfmpegStatus status,
+            long ffmpegGeneration) {
+        String executableKey = softwareCodecCacheKey(
+                status,
+                ffmpegGeneration);
+        synchronized (FFmpegEncoder.class) {
+            String cached = cachedSoftwareCodec;
+            if (cached != null
+                    && executableKey.equals(
+                            cachedSoftwareCodecKey)) {
+                return cached;
+            }
+        }
+
+        Boolean x264Support = null;
+        Boolean mpeg4Support = null;
+        Boolean xvidSupport = null;
+        if (status != null && status.isFound()) {
+            x264Support =
+                    FfmpegBundleManager.getCachedEncoderSupport(
+                            ffmpegGeneration,
+                            status.getExecutable(),
+                            "libx264");
+            mpeg4Support =
+                    FfmpegBundleManager.getCachedEncoderSupport(
+                            ffmpegGeneration,
+                            status.getExecutable(),
+                            "mpeg4");
+            xvidSupport =
+                    FfmpegBundleManager.getCachedEncoderSupport(
+                            ffmpegGeneration,
+                            status.getExecutable(),
+                            "libxvid");
+        }
+
+        /*
+         * V1-0.09 and the managed desktop bundle prefer libx264. Do not cache
+         * this cold-start default: once the asynchronous listing arrives, the
+         * exact same FFmpeg generation must be allowed to refresh to its
+         * proven best codec (or a proven MPEG-4 fallback).
+         */
+        if (x264Support == null
+                && mpeg4Support == null
+                && xvidSupport == null) {
+            return "libx264";
+        }
+
+        String resolved;
+        if (Boolean.TRUE.equals(x264Support)) {
+            resolved = "libx264";
+        } else if (Boolean.TRUE.equals(mpeg4Support)) {
+            resolved = "mpeg4";
+        } else if (Boolean.TRUE.equals(xvidSupport)) {
+            resolved = "libxvid";
+        } else {
+            resolved = "mpeg4";
+        }
+        synchronized (FFmpegEncoder.class) {
+            String cached = cachedSoftwareCodec;
+            if (cached != null
+                    && executableKey.equals(
+                            cachedSoftwareCodecKey)) {
+                return cached;
+            }
+            if (FfmpegBundleManager.isCurrentFfmpegStatus(
+                    status,
+                    ffmpegGeneration)) {
+                cachedSoftwareCodec = resolved;
+                cachedSoftwareCodecKey = executableKey;
+            }
+        }
+        return resolved;
+    }
+
+    private static String softwareCodecCacheKey(
+            FfmpegBundleManager.FfmpegStatus status,
+            long ffmpegGeneration) {
+        return ffmpegGeneration
+                + "\n"
+                + (status != null && status.isFound()
+                        ? status.getExecutable() + "\n"
+                                + status.getVersion()
+                        : "<ffmpeg-unavailable>");
+    }
+
+    /**
+     * Returns only encoder choices that can actually initialize on this
+     * machine. FFmpeg may list a hardware encoder even when its matching GPU
+     * or driver is absent, so the same device preflight used by recording is
+     * applied before exposing the option in settings.
+     */
+    public static List<RecordableConfig.VideoEncoder> detectAvailableEncoders() {
+        List<RecordableConfig.VideoEncoder> available =
+            new ArrayList<RecordableConfig.VideoEncoder>();
+        available.add(RecordableConfig.VideoEncoder.SOFTWARE);
+        resolveSoftwareCodec();
+        for (RecordableConfig.VideoEncoder encoder
+                : RecordableConfig.VideoEncoder.values()) {
+            if (encoder != RecordableConfig.VideoEncoder.SOFTWARE
+                    && FfmpegBundleManager.isEncoderUsable(
+                        encoder.ffmpegCodec)) {
+                available.add(encoder);
+            }
+        }
+        return available;
+    }
+
+    public static String getCachedSoftwareCodec() {
+        return cachedSoftwareCodec;
+    }
+
+    static String getCachedSoftwareCodecKey() {
+        return cachedSoftwareCodecKey;
+    }
+
+    static String resolveSoftwareCodecForStartForTest(
+            FfmpegBundleManager.FfmpegStatus status,
+            long ffmpegGeneration) {
+        return resolveSoftwareCodecForStart(
+                status,
+                ffmpegGeneration);
+    }
+
+    static String resolveWebmCodec(
+            long ffmpegGeneration,
+            String executable) throws IOException {
+        Boolean vp9Support =
+                FfmpegBundleManager.getCachedEncoderSupport(
+                        ffmpegGeneration,
+                        executable,
+                        "libvpx-vp9");
+        Boolean vp8Support =
+                FfmpegBundleManager.getCachedEncoderSupport(
+                        ffmpegGeneration,
+                        executable,
+                        "libvpx");
+        if (Boolean.TRUE.equals(vp9Support)) {
+            return "libvpx-vp9";
+        }
+        if (Boolean.TRUE.equals(vp8Support)) {
+            return "libvpx";
+        }
+        if (Boolean.FALSE.equals(vp9Support)
+                && Boolean.FALSE.equals(vp8Support)) {
+            throw new IOException(
+                    "This FFmpeg installation has no supported WebM "
+                            + "video encoder (libvpx-vp9 or libvpx).");
+        }
+        return "libvpx-vp9";
+    }
+
+    private RecordableConfig.VideoEncoder resolveAvailableEncoder(
+            RecordableConfig.VideoEncoder selected,
+            long ffmpegGeneration,
+            String executable) {
         if (selected == null || selected == RecordableConfig.VideoEncoder.SOFTWARE) {
             return RecordableConfig.VideoEncoder.SOFTWARE;
         }
-        if (FfmpegBundleManager.isEncoderUsable(
-                selected.ffmpegCodec)) {
+        /*
+         * Hardware preflight is intentionally probe-capable only in the
+         * asynchronous settings discovery path. Recording startup consumes a
+         * cached result and otherwise falls back immediately.
+         */
+        Boolean cachedUsability =
+                FfmpegBundleManager.getCachedEncoderUsability(
+                        ffmpegGeneration,
+                        executable,
+                        selected.ffmpegCodec);
+        if (Boolean.TRUE.equals(cachedUsability)) {
             return selected;
         }
-        RecordableMod.LOGGER.warn("{} is unavailable or failed its device preflight; falling back to x264.",
-            selected.displayName);
+        RecordableMod.LOGGER.warn(
+                cachedUsability == null
+                        ? "{} has no current device preflight; "
+                                + "falling back to software encoding."
+                        : "{} is unavailable or failed its device preflight; "
+                                + "falling back to software encoding.",
+                selected.displayName);
         return RecordableConfig.VideoEncoder.SOFTWARE;
     }
 
@@ -525,6 +803,12 @@ public final class FFmpegEncoder {
         return value.length() > 48
                 ? value.substring(0, 48)
                 : value;
+    }
+
+    private static boolean isAutoClipPrefix(String prefix) {
+        return prefix != null
+                && (prefix.startsWith("on-")
+                        || "auto-clip".equals(prefix));
     }
 
     private static String doubleBitrate(String value) {

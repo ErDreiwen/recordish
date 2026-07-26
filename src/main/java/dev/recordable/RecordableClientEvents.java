@@ -27,6 +27,8 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
 
 import java.lang.reflect.Constructor;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -36,6 +38,16 @@ public final class RecordableClientEvents {
     private static final String CATEGORY =
             "key.categories.recordable.main";
     private static final int HOME_BUTTON_ID = 0x524543;
+    private static final int[] FKEY_PRIORITY_ORDER = {
+        Keyboard.KEY_F6,
+        Keyboard.KEY_F7,
+        Keyboard.KEY_F8,
+        Keyboard.KEY_F9,
+        Keyboard.KEY_F10,
+        Keyboard.KEY_F11,
+        Keyboard.KEY_F12,
+        Keyboard.KEY_F4
+    };
     private static final RecordableClientEvents INSTANCE =
             new RecordableClientEvents();
 
@@ -68,24 +80,40 @@ public final class RecordableClientEvents {
 
     private void registerKeybindings() {
         RecordableConfig config = RecordableConfig.get();
+        Set<Integer> claimedKeys = collectClaimedKeyBindings();
         toggleRecording = register(
                 "key.recordable.toggle_recording",
-                config.hotkeyToggleRecording);
+                resolveHotkeyDefault(
+                    config.hotkeyToggleRecording,
+                    RecordableConfig.DEFAULT_HOTKEY_TOGGLE_RECORDING,
+                    claimedKeys));
         pauseResume = register(
                 "key.recordable.pause_resume",
-                config.hotkeyPauseResume);
+                resolveHotkeyDefault(
+                    config.hotkeyPauseResume,
+                    RecordableConfig.DEFAULT_HOTKEY_PAUSE_RESUME,
+                    claimedKeys));
         openSettings = register(
                 "key.recordable.open_settings",
-                config.hotkeyOpenSettings);
+                resolveHotkeyDefault(
+                    config.hotkeyOpenSettings,
+                    RecordableConfig.DEFAULT_HOTKEY_OPEN_SETTINGS,
+                    claimedKeys));
         openVideos = register(
                 "key.recordable.open_video_collection",
-                config.hotkeyOpenVideoCollection);
+                resolveHotkeyDefault(
+                    config.hotkeyOpenVideoCollection,
+                    RecordableConfig.DEFAULT_HOTKEY_OPEN_VIDEO_COLLECTION,
+                    claimedKeys));
         addBookmark = register(
                 "key.recordable.add_bookmark",
                 config.hotkeyAddBookmark);
         pushToTalk = register(
                 "key.recordable.push_to_talk",
-                config.hotkeyPushToTalk);
+                resolveHotkeyDefault(
+                    config.hotkeyPushToTalk,
+                    RecordableConfig.DEFAULT_HOTKEY_PUSH_TO_TALK,
+                    claimedKeys));
         saveReplay = register(
                 "key.recordable.save_replay_buffer",
                 config.hotkeySaveReplayBuffer);
@@ -106,6 +134,61 @@ public final class RecordableClientEvents {
         return binding;
     }
 
+    private static Set<Integer> collectClaimedKeyBindings() {
+        Set<Integer> claimed = new LinkedHashSet<Integer>();
+        claimed.add(Integer.valueOf(Keyboard.KEY_F1));
+        claimed.add(Integer.valueOf(Keyboard.KEY_F2));
+        claimed.add(Integer.valueOf(Keyboard.KEY_F3));
+        claimed.add(Integer.valueOf(Keyboard.KEY_F5));
+        try {
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft != null
+                    && minecraft.gameSettings != null
+                    && minecraft.gameSettings.keyBindings != null) {
+                for (KeyBinding binding
+                        : minecraft.gameSettings.keyBindings) {
+                    int code = binding.getKeyCode();
+                    if (code != Keyboard.KEY_NONE) {
+                        claimed.add(Integer.valueOf(code));
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            RecordableMod.LOGGER.debug(
+                "Could not inspect existing key bindings.",
+                throwable);
+        }
+        return claimed;
+    }
+
+    private static int resolveHotkeyDefault(
+            int configured,
+            int compileDefault,
+            Set<Integer> claimed) {
+        if (configured == Keyboard.KEY_NONE
+                && compileDefault == Keyboard.KEY_NONE) {
+            return Keyboard.KEY_NONE;
+        }
+        if (configured != compileDefault) {
+            if (configured != Keyboard.KEY_NONE) {
+                claimed.add(Integer.valueOf(configured));
+            }
+            return configured;
+        }
+        if (compileDefault != Keyboard.KEY_NONE
+                && !claimed.contains(Integer.valueOf(compileDefault))) {
+            claimed.add(Integer.valueOf(compileDefault));
+            return compileDefault;
+        }
+        for (int candidate : FKEY_PRIORITY_ORDER) {
+            if (!claimed.contains(Integer.valueOf(candidate))) {
+                claimed.add(Integer.valueOf(candidate));
+                return candidate;
+            }
+        }
+        return Keyboard.KEY_NONE;
+    }
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
@@ -114,6 +197,9 @@ public final class RecordableClientEvents {
         ensureInitialMainMenuEvents(minecraft);
         RecordingManager manager = RecordingManager.getInstance();
         while (toggleRecording.isPressed()) {
+            if (!manager.isRecording()) {
+                ModCompatibilityChecker.warnPlayerIfConflicts();
+            }
             manager.toggleRecording();
         }
         while (pauseResume.isPressed()) {

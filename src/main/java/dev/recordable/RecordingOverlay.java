@@ -141,12 +141,8 @@ public final class RecordingOverlay {
         if (manager.getState() == RecordingManager.State.STOPPING) {
             firstLine = "REC stopping...";
         } else if (paused) {
-            // Minecraft 1.8.9's bundled font does not reliably contain U+23F8.
-            firstLine = (blink ? "|| " : "   ")
-                    + "PAUSED " + effectiveTime;
+            firstLine = "PAUSED " + effectiveTime;
         } else {
-            // The official HUD uses a bullet glyph. A procedural REC dot below
-            // preserves that appearance on the legacy font renderer.
             firstLine = "REC " + effectiveTime;
         }
 
@@ -156,14 +152,10 @@ public final class RecordingOverlay {
                 : "starting...";
         String secondLine = manager.getRecordingFps()
                 + " FPS  drop " + manager.getDroppedFrames();
-        /*
-         * The 1.8.9 manager intentionally does not expose its FFmpeg queue's
-         * raw size/capacity. Preserve the official resolution and queue-health
-         * information without inventing occupancy values.
-         */
         String thirdLine = manager.getRecordingWidth()
                 + "x" + manager.getRecordingHeight()
-                + "  Queue: " + queueLabel(manager);
+                + "  Queue: " + queueOccupancy(manager)
+                + " (" + queueLabel(manager) + ")";
 
         ReplayBuffer replay = ReplayBuffer.getInstance();
         boolean replayActive = replay.isActive();
@@ -174,14 +166,16 @@ public final class RecordingOverlay {
                 : "";
 
         int widest = Math.max(
-                font.getStringWidth(firstLine),
+                font.getStringWidth(firstLine) + 13,
                 Math.max(
                         font.getStringWidth(secondLine),
                         Math.max(
                                 font.getStringWidth("Size: " + fileSize),
                                 font.getStringWidth(thirdLine))));
         if (replayActive) {
-            widest = Math.max(widest, font.getStringWidth(replayLine));
+            widest = Math.max(
+                    widest,
+                    font.getStringWidth(replayLine) + 12);
         }
 
         int panelWidth = widest + 22;
@@ -217,15 +211,19 @@ public final class RecordingOverlay {
                 y - 2,
                 withAlpha(accent, 170));
 
-        if (!paused) {
-            Gui.drawRect(x, y + 3, x + 8, y + 11, accent);
+        if (paused) {
+            if (blink) {
+                drawPauseGlyph(x, y + 1, 0xFFFFD166);
+            }
+        } else {
+            drawRecordDot(x, y + 2, accent);
         }
 
         int lineY = y;
         drawText(
                 font,
                 firstLine,
-                x + (paused ? 0 : 13),
+                x + 13,
                 lineY,
                 paused ? 0xFFFFD166 : 0xFFFFFFFF);
         lineY += 12;
@@ -246,7 +244,8 @@ public final class RecordingOverlay {
         drawText(font, thirdLine, x, lineY, queueColor(manager));
         lineY += 11;
         if (replayActive) {
-            drawText(font, replayLine, x, lineY, 0xFF88CCFF);
+            drawReplayGlyph(x, lineY + 1, 0xFF88CCFF);
+            drawText(font, replayLine, x + 12, lineY, 0xFF88CCFF);
         }
     }
 
@@ -330,7 +329,7 @@ public final class RecordingOverlay {
                                     config.vhsPlayColor,
                                     0xFFFFFFFF),
                     opacity);
-            drawText(font, "PLAY >", x, y, playColor);
+            drawPlayLabel(font, x, y, playColor);
             y += 12;
         }
 
@@ -349,7 +348,7 @@ public final class RecordingOverlay {
                                     config.vhsRecDotColor,
                                     0xFFCC1E1E),
                     opacity);
-            Gui.drawRect(x, y + 2, x + 7, y + 9, dotColor);
+            drawRecordDot(x, y + 2, dotColor);
         }
         drawText(font, "REC", x + 10, y, recTextColor);
     }
@@ -419,7 +418,8 @@ public final class RecordingOverlay {
                                                  int height) {
         String fps = manager.getRecordingFps()
                 + " FPS  drop " + manager.getDroppedFrames() + "  ";
-        String queue = "Q " + queueLabel(manager);
+        String queue = "Q " + queueOccupancy(manager)
+                + " " + queueLabel(manager);
         int x = 4;
         int y = height - 11;
         int width = font.getStringWidth(fps) + font.getStringWidth(queue);
@@ -443,10 +443,12 @@ public final class RecordingOverlay {
                 + " | Enc " + rounded(manager.getEncoderFpsEstimate()) + " FPS");
         lines.add("Mem " + manager.getUsedMemoryMiB()
                 + " MiB | Drop " + manager.getDroppedFrames());
-        lines.add("Queue: " + queueLabel(manager)
-                + " | " + Math.round(
-                        PerformanceMetrics.getInstance()
-                                .getBufferHealthPercent())
+        PerformanceMetrics metrics = PerformanceMetrics.getInstance();
+        metrics.updateQueueStats(
+                manager.getQueueSize(),
+                manager.getQueueCapacity());
+        lines.add("Queue: " + queueOccupancy(manager)
+                + " | " + Math.round(metrics.getBufferHealthPercent())
                 + "%");
 
         int widest = 0;
@@ -506,8 +508,7 @@ public final class RecordingOverlay {
                 x + panelWidth, y + panelHeight, cyan);
 
         if (blinkOn()) {
-            Gui.drawRect(x + 6, y + 6, x + 12, y + 12,
-                    magenta);
+            drawRecordDot(x + 6, y + 5, magenta);
         }
         drawText(font, line, x + 16, y + 4, textColor);
     }
@@ -520,20 +521,15 @@ public final class RecordingOverlay {
             return;
         }
 
-        boolean live = manager.isMicrophoneActive();
-        boolean pushToTalk = config.microphonePushToTalk;
-        if (!config.captureMicrophone && !live) {
+        if (!manager.isMicrophoneCapturing()) {
             return;
         }
 
-        String label;
-        if (pushToTalk) {
-            label = live ? "MIC (PTT LIVE)" : "MIC (PTT)";
-        } else {
-            label = live ? "MIC" : "MIC IDLE";
-        }
+        boolean live = manager.isMicrophoneActive();
+        boolean pushToTalk = config.microphonePushToTalk;
+        String label = pushToTalk ? "MIC (PTT)" : "MIC";
         int opacity = config.hudMicOpacity;
-        int panelWidth = font.getStringWidth(label) + 19;
+        int panelWidth = font.getStringWidth(label) + 27;
         int x = config.hudMicX < 0
                 ? (resolution.getScaledWidth() - panelWidth) / 2
                 : config.hudMicX;
@@ -543,11 +539,15 @@ public final class RecordingOverlay {
         Gui.drawRect(x, y, x + panelWidth, y + 13,
                 RecordableConfig.applyOpacity(0xA0000000, opacity));
         int dot = live ? 0xFFFF3030 : 0xFF555555;
-        Gui.drawRect(x + 4, y + 4, x + 10, y + 10,
+        int text = RecordableConfig.applyOpacity(
+                live ? 0xFFFFFFFF : 0xFF888888,
+                opacity);
+        drawRecordDot(
+                x + 3,
+                y + 3,
                 RecordableConfig.applyOpacity(dot, opacity));
-        drawText(font, label, x + 14, y + 2,
-                RecordableConfig.applyOpacity(
-                        live ? 0xFFFFFFFF : 0xFF888888, opacity));
+        drawMicrophoneGlyph(x + 13, y + 2, text);
+        drawText(font, label, x + 23, y + 2, text);
         if (pushToTalk && live) {
             Gui.drawRect(x, y + 12, x + panelWidth, y + 13,
                     RecordableConfig.applyOpacity(0xFFFF3030, opacity));
@@ -894,17 +894,81 @@ public final class RecordingOverlay {
     }
 
     private static String queueLabel(RecordingManager manager) {
-        Object queueHealth = manager.getQueueHealth();
-        String value = queueHealth == null
-                ? "OK"
-                : queueHealth.toString().trim().toUpperCase(Locale.ROOT);
-        if (value.contains("CRITICAL") || value.contains("DROP")) {
+        RecordingManager.QueueHealth queueHealth = manager.getQueueHealth();
+        if (queueHealth == RecordingManager.QueueHealth.CRITICAL) {
             return "DROPPING";
         }
-        if (value.contains("SLOW") || value.contains("WARN")) {
+        if (queueHealth == RecordingManager.QueueHealth.SLOW) {
             return "SLOW";
         }
         return "OK";
+    }
+
+    private static String queueOccupancy(RecordingManager manager) {
+        return manager.getQueueSize() + "/" + manager.getQueueCapacity();
+    }
+
+    /**
+     * The 1.8.9 font can replace several of the official HUD symbols with a
+     * missing-glyph box. These small pixel primitives preserve their intent
+     * independently of the selected language or Unicode-font setting.
+     */
+    private static void drawRecordDot(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x + 2, y, x + 5, y + 1, color);
+        Gui.drawRect(x + 1, y + 1, x + 6, y + 2, color);
+        Gui.drawRect(x, y + 2, x + 7, y + 5, color);
+        Gui.drawRect(x + 1, y + 5, x + 6, y + 6, color);
+        Gui.drawRect(x + 2, y + 6, x + 5, y + 7, color);
+    }
+
+    private static void drawPauseGlyph(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x, y, x + 3, y + 8, color);
+        Gui.drawRect(x + 5, y, x + 8, y + 8, color);
+    }
+
+    private static void drawPlayLabel(
+            FontRenderer font,
+            int x,
+            int y,
+            int color) {
+        String label = "PLAY";
+        drawText(font, label, x, y, color);
+        int triangleX = x + font.getStringWidth(label) + 3;
+        drawPlayTriangle(triangleX, y + 1, color);
+    }
+
+    private static void drawPlayTriangle(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x, y, x + 1, y + 8, color);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + 7, color);
+        Gui.drawRect(x + 2, y + 2, x + 3, y + 6, color);
+        Gui.drawRect(x + 3, y + 3, x + 4, y + 5, color);
+    }
+
+    private static void drawReplayGlyph(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x + 2, y, x + 7, y + 1, color);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + 3, color);
+        Gui.drawRect(x, y + 3, x + 1, y + 7, color);
+        Gui.drawRect(x + 1, y + 7, x + 3, y + 8, color);
+        Gui.drawRect(x + 3, y + 8, x + 7, y + 9, color);
+        Gui.drawRect(x + 7, y + 6, x + 8, y + 8, color);
+        Gui.drawRect(x + 6, y, x + 9, y + 1, color);
+        Gui.drawRect(x + 8, y, x + 9, y + 4, color);
+    }
+
+    private static void drawMicrophoneGlyph(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x + 2, y, x + 6, y + 6, color);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + 6, color);
+        Gui.drawRect(x + 6, y + 1, x + 7, y + 6, color);
+        Gui.drawRect(x, y + 4, x + 1, y + 7, color);
+        Gui.drawRect(x + 7, y + 4, x + 8, y + 7, color);
+        Gui.drawRect(x + 1, y + 7, x + 7, y + 8, color);
+        Gui.drawRect(x + 3, y + 8, x + 5, y + 10, color);
+        Gui.drawRect(x + 1, y + 9, x + 7, y + 10, color);
     }
 
     /**

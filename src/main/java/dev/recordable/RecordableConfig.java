@@ -764,7 +764,16 @@ public final class RecordableConfig {
                 && !bitrate.trim().matches("(?i)^[1-9][0-9]*(?:[km])?$"))) {
             bitrate = "auto";
         }
-        if (isBlank(audioDevice)) audioDevice = "auto";
+        if (isBlank(audioDevice)) {
+            audioDevice = "auto";
+        } else {
+            audioDevice = audioDevice.trim();
+            if ("openal".equalsIgnoreCase(audioDevice)) {
+                RecordableMod.LOGGER.info(
+                        "Migrating legacy audioDevice='openal' to 'auto'.");
+                audioDevice = "auto";
+            }
+        }
         if (isBlank(microphoneDevice)) microphoneDevice = "auto";
         audioBitrateKbps = clamp(audioBitrateKbps, 32, 512);
         audioSampleRate = contains(AUDIO_SAMPLE_RATES, audioSampleRate) ? audioSampleRate : 48000;

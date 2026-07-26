@@ -4,6 +4,7 @@ import dev.recordable.RecordableConfig;
 import dev.recordable.theme.CycleButton;
 import dev.recordable.theme.ThemeEngine;
 import dev.recordable.theme.ThemedButton;
+import dev.recordable.theme.ThemedPanel;
 import dev.recordable.theme.ThemedSlider;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -270,6 +271,7 @@ public final class ExportSettingsScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         super.drawScreen(mouseX, mouseY, partialTicks);
         drawCenteredString(
                 fontRendererObj,

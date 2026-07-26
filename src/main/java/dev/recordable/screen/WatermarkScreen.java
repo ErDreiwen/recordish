@@ -643,6 +643,7 @@ public final class WatermarkScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        dev.recordable.theme.ThemedPanel.drawMenuBackdrop(width, height);
 
         int accent = 0xFF000000
                 | RecordableConfig.get().getMenuAccentColorRgb();

@@ -237,6 +237,7 @@ public final class ThemeSettingsScreen extends GuiScreen {
     public void drawScreen(
             int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         ThemeColors colors = ThemeEngine.get().colors();
 
         ThemedPanel.drawPanel(

@@ -343,6 +343,7 @@ public final class PerformanceScreen extends GuiScreen {
     public void drawScreen(
             int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        ThemedPanel.drawMenuBackdrop(width, height);
         ThemedPanel.drawPanel(
                 panelX,
                 panelY,

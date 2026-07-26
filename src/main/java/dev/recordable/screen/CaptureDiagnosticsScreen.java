@@ -148,6 +148,7 @@ public final class CaptureDiagnosticsScreen extends GuiScreen {
     public void drawScreen(
             int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
+        dev.recordable.theme.ThemedPanel.drawMenuBackdrop(width, height);
         rebuildLines();
 
         int accent = 0xFF000000

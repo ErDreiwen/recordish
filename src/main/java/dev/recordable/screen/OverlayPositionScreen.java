@@ -330,10 +330,8 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     private void addVhsElements(RecordableConfig config) {
         int playWidth = Math.max(
-                60,
-                Math.max(
-                        fontRendererObj.getStringWidth("PLAY >"),
-                        fontRendererObj.getStringWidth("REC") + 12) + 8);
+                playLabelWidth(),
+                fontRendererObj.getStringWidth("REC") + 12) + 8;
         int playHeight = config.vhsShowPlay ? 24 : 12;
         Element play = new Element(
                 "PLAY/REC", "PLAY / REC",
@@ -380,11 +378,10 @@ public final class OverlayPositionScreen extends GuiScreen {
         int detailsHeight = 4;
         if (config.vhsShowDate) detailsHeight += 22;
         if (config.vhsShowTapeCounter) detailsHeight += 11;
-        if (config.showEstimatedFileSize) detailsHeight += 11;
         if (config.vhsShowAudioMeter) detailsHeight += 12;
         if (config.vhsShowBattery) detailsHeight += 13;
         detailsHeight = Math.max(22, detailsHeight);
-        int detailsWidth = 86;
+        int detailsWidth = 80;
         int detailsActualWidth = config.hudDetailsW > 0
                 ? config.hudDetailsW
                 : detailsWidth;
@@ -402,12 +399,7 @@ public final class OverlayPositionScreen extends GuiScreen {
         details.resizable = true;
         elements.add(details);
 
-        String[] performanceLines = {
-                "Capture 60 FPS",
-                "Encoder 60 FPS",
-                "Memory 1024 MiB",
-                "Queue OK"
-        };
+        String[] performanceLines = previewPerformanceLines(config);
         int performanceWidth = 0;
         for (String line : performanceLines) {
             performanceWidth = Math.max(
@@ -435,18 +427,15 @@ public final class OverlayPositionScreen extends GuiScreen {
     }
 
     private void addClassicElement(RecordableConfig config) {
-        String[] lines = {
-                "REC 00:12:34",
-                "Cap 60 | Enc 60 FPS",
-                "Est. size: 128 MiB",
-                "Queue: OK | Mem 1024 MiB"
-        };
-        int widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, fontRendererObj.getStringWidth(line));
+        String[] lines = previewClassicLines(config);
+        int widest = fontRendererObj.getStringWidth(lines[0]) + 13;
+        for (int index = 1; index < lines.length; index++) {
+            widest = Math.max(
+                    widest,
+                    fontRendererObj.getStringWidth(lines[index]));
         }
-        int panelWidth = widest + 18;
-        int panelHeight = lines.length * 11 + 9;
+        int panelWidth = widest + 22;
+        int panelHeight = 12 + (lines.length - 1) * 11;
         int[] position = resolvePanelPosition(
                 config, panelWidth, panelHeight,
                 config.hudClassicX, config.hudClassicY, 10);
@@ -456,20 +445,12 @@ public final class OverlayPositionScreen extends GuiScreen {
     }
 
     private void addSynthwaveElement(RecordableConfig config) {
-        String[] lines = {
-                "REC 00:12:34",
-                "EST 128 MiB",
-                "C 60 E 60 | Q OK"
-        };
-        int widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, fontRendererObj.getStringWidth(line));
-        }
-        int panelWidth = widest + 25;
-        int panelHeight = Math.max(18, lines.length * 10 + 8);
+        String line = "REC 00:12:34";
+        int panelWidth = fontRendererObj.getStringWidth(line) + 22;
+        int panelHeight = 16;
         int[] position = resolvePanelPosition(
                 config, panelWidth, panelHeight,
-                config.hudSynthX, config.hudSynthY, 10);
+                config.hudSynthX, config.hudSynthY, 0);
         elements.add(new Element(
                 "Synthwave", "Synthwave HUD",
                 position[0], position[1], panelWidth, panelHeight));
@@ -477,10 +458,10 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     private void addMicrophoneElement(RecordableConfig config) {
         String text = config.microphonePushToTalk
-                ? "MIC (PTT LIVE)"
+                ? "MIC (PTT)"
                 : "MIC";
-        int actualWidth = fontRendererObj.getStringWidth(text) + 19;
-        int actualHeight = 14;
+        int actualWidth = fontRendererObj.getStringWidth(text) + 27;
+        int actualHeight = 13;
         int actualX = config.hudMicX < 0
                 ? (width - actualWidth) / 2
                 : config.hudMicX;
@@ -638,7 +619,7 @@ public final class OverlayPositionScreen extends GuiScreen {
         if ("SP".equals(id)) return "\u25B6";
         if ("Perf".equals(id)) return "\u2261";
         if ("Corners".equals(id)) return "\u2B1C";
-        if ("Mic".equals(id)) return "\uD83C\uDFA4";
+        if ("Mic".equals(id)) return "\u266A";
         if ("Classic".equals(id) || "Synthwave".equals(id)) {
             return "\u25A4";
         }
@@ -898,32 +879,144 @@ public final class OverlayPositionScreen extends GuiScreen {
                 0xAA000000);
     }
 
+    private int playLabelWidth() {
+        return fontRendererObj.getStringWidth("PLAY") + 7;
+    }
+
+    private String[] previewPerformanceLines(RecordableConfig config) {
+        return new String[]{
+                "Cap 60 | Enc 60 FPS",
+                "Mem 1024 MiB | Drop 0",
+                "Queue: " + previewQueueOccupancy(config) + " | 100%"
+        };
+    }
+
+    private String[] previewClassicLines(RecordableConfig config) {
+        return new String[]{
+                "REC 00:12:34",
+                "60 FPS  drop 0",
+                "Size: 12.3 MB",
+                "1920x1080  Queue: "
+                        + previewQueueOccupancy(config)
+                        + " (OK)"
+        };
+    }
+
+    private static String previewQueueOccupancy(RecordableConfig config) {
+        int capacity = config != null && config.perfModeGamePriority ? 6 : 12;
+        return "0/" + capacity;
+    }
+
+    private static ThemeColors activeOverlaySkin(RecordableConfig config) {
+        if (config == null || !config.overlaySkinEnabled) {
+            return null;
+        }
+        return ThemeColors.forPreset(config.uiTheme);
+    }
+
+    private void drawPlayLabel(int x, int y, int color) {
+        String label = "PLAY";
+        fontRendererObj.drawStringWithShadow(label, x, y, color);
+        drawPlayTriangle(
+                x + fontRendererObj.getStringWidth(label) + 3,
+                y + 1,
+                color);
+    }
+
+    private static void drawPlayTriangle(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x, y, x + 1, y + 8, color);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + 7, color);
+        Gui.drawRect(x + 2, y + 2, x + 3, y + 6, color);
+        Gui.drawRect(x + 3, y + 3, x + 4, y + 5, color);
+    }
+
+    private static void drawRecordDot(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x + 2, y, x + 5, y + 1, color);
+        Gui.drawRect(x + 1, y + 1, x + 6, y + 2, color);
+        Gui.drawRect(x, y + 2, x + 7, y + 5, color);
+        Gui.drawRect(x + 1, y + 5, x + 6, y + 6, color);
+        Gui.drawRect(x + 2, y + 6, x + 5, y + 7, color);
+    }
+
+    private static void drawMicrophoneGlyph(int x, int y, int color) {
+        if (((color >>> 24) & 255) < 4) return;
+        Gui.drawRect(x + 2, y, x + 6, y + 6, color);
+        Gui.drawRect(x + 1, y + 1, x + 2, y + 6, color);
+        Gui.drawRect(x + 6, y + 1, x + 7, y + 6, color);
+        Gui.drawRect(x, y + 4, x + 1, y + 7, color);
+        Gui.drawRect(x + 7, y + 4, x + 8, y + 7, color);
+        Gui.drawRect(x + 1, y + 7, x + 7, y + 8, color);
+        Gui.drawRect(x + 3, y + 8, x + 5, y + 10, color);
+        Gui.drawRect(x + 1, y + 9, x + 7, y + 10, color);
+    }
+
+    private static void drawAudioMeterPreview(int x, int y, int opacity) {
+        int background = RecordableConfig.applyOpacity(
+                0xFF333333,
+                opacity);
+        int level = RecordableConfig.applyOpacity(0xFF44CC44, opacity);
+        Gui.drawRect(x, y, x + 55, y + 3, background);
+        Gui.drawRect(x, y + 4, x + 55, y + 7, background);
+        Gui.drawRect(x, y, x + 30, y + 3, level);
+        Gui.drawRect(x, y + 4, x + 28, y + 7, level);
+    }
+
+    private void drawBatteryPreview(int x, int y, int opacity) {
+        int shell = RecordableConfig.applyOpacity(0xFFAAAAAA, opacity);
+        Gui.drawRect(x, y, x + 24, y + 10, shell);
+        Gui.drawRect(
+                x + 1,
+                y + 1,
+                x + 23,
+                y + 9,
+                RecordableConfig.applyOpacity(0xFF222222, opacity));
+        Gui.drawRect(x + 24, y + 2, x + 26, y + 8, shell);
+        Gui.drawRect(
+                x + 2,
+                y + 2,
+                x + 18,
+                y + 8,
+                RecordableConfig.applyOpacity(0xFF44CC44, opacity));
+        fontRendererObj.drawString(
+                "98%",
+                x + 29,
+                y + 1,
+                RecordableConfig.applyOpacity(0xFFCCCCCC, opacity));
+    }
+
     private void drawElementContent(Element element) {
         RecordableConfig config = RecordableConfig.get();
+        ThemeColors skin = activeOverlaySkin(config);
         if (element.watermark != null) {
             drawWatermarkPreview(element);
         } else if ("PLAY/REC".equals(element.id)) {
             int opacity = config.hudPlayRecOpacity;
             int play = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(
-                            config.vhsPlayColor, 0xFFFFFFFF),
+                    skin != null
+                            ? skin.textPrimary
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsPlayColor, 0xFFFFFFFF),
                     opacity);
             int rec = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(
-                            config.vhsRecTextColor, 0xFFFFFFFF),
+                    skin != null
+                            ? skin.textPrimary
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsRecTextColor, 0xFFFFFFFF),
                     opacity);
             int dot = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(
-                            config.vhsRecDotColor, 0xFFCC1E1E),
+                    skin != null
+                            ? skin.accent
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsRecDotColor, 0xFFCC1E1E),
                     opacity);
             int y = element.y;
             if (config.vhsShowPlay) {
-                fontRendererObj.drawString(
-                        "PLAY >", element.x + 2, y + 1, play);
+                drawPlayLabel(element.x + 2, y + 1, play);
                 y += 12;
             }
-            Gui.drawRect(element.x + 2, y + 3,
-                    element.x + 8, y + 9, dot);
+            drawRecordDot(element.x + 2, y + 2, dot);
             fontRendererObj.drawString("REC", element.x + 11, y + 1, rec);
         } else if ("Timestamp".equals(element.id)) {
             fontRendererObj.drawString(
@@ -931,13 +1024,18 @@ public final class OverlayPositionScreen extends GuiScreen {
                     element.x + 2,
                     element.y + 2,
                     RecordableConfig.applyOpacity(
-                            RecordableConfig.parseArgbColor(
-                                    config.vhsTimestampColor, 0xFFFFFFFF),
+                            skin != null
+                                    ? skin.textPrimary
+                                    : RecordableConfig.parseArgbColor(
+                                            config.vhsTimestampColor,
+                                            0xFFFFFFFF),
                             config.hudTimestampOpacity));
         } else if ("Corners".equals(element.id)) {
             int color = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(
-                            config.vhsBracketColor, 0xC8FFFFFF),
+                    skin != null
+                            ? skin.accent
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsBracketColor, 0xC8FFFFFF),
                     config.hudCornersOpacity);
             drawCornerBrackets(
                     element.x, element.y,
@@ -949,23 +1047,49 @@ public final class OverlayPositionScreen extends GuiScreen {
             fontRendererObj.drawString(
                     "SP", element.x + 1, element.y + 1,
                     RecordableConfig.applyOpacity(
-                            RecordableConfig.parseArgbColor(
-                                    config.vhsSpColor, 0xFFFFFFFF),
+                            skin != null
+                                    ? skin.textPrimary
+                                    : RecordableConfig.parseArgbColor(
+                                            config.vhsSpColor, 0xFFFFFFFF),
                             config.hudSpOpacity));
         } else if ("Details".equals(element.id)) {
             int color = RecordableConfig.applyOpacity(
                     RecordableConfig.parseArgbColor(
                             config.vhsDateColor, 0xFFFFFFFF),
                     config.hudDetailsOpacity);
-            drawRight("12:34 PM", element.x + element.w - 2,
-                    element.y + 2, color);
-            drawRight("JUL 23 2026", element.x + element.w - 2,
-                    element.y + 12, color);
-            if (element.h >= 35) {
-                drawRight("TC 0012", element.x + element.w - 2,
-                        element.y + 24,
+            int right = element.x + element.w;
+            int cursorY = element.y + element.h;
+            if (config.vhsShowDate) {
+                cursorY -= 22;
+                drawRight("12:34 PM", right, cursorY, color);
+                drawRight("Jul 23 2026", right, cursorY + 11, color);
+                cursorY -= 4;
+            } else {
+                cursorY -= 4;
+            }
+            if (config.vhsShowTapeCounter) {
+                cursorY -= 11;
+                drawRight(
+                        "TC 0012",
+                        right,
+                        cursorY,
                         RecordableConfig.applyOpacity(
-                                0xFFCCCCCC, config.hudDetailsOpacity));
+                                0xFFCCCCCC,
+                                config.hudDetailsOpacity));
+            }
+            if (config.vhsShowAudioMeter) {
+                cursorY -= 12;
+                drawAudioMeterPreview(
+                        right - 60,
+                        cursorY,
+                        config.hudDetailsOpacity);
+            }
+            if (config.vhsShowBattery) {
+                cursorY -= 13;
+                drawBatteryPreview(
+                        right - 50,
+                        cursorY,
+                        config.hudDetailsOpacity);
             }
         } else if ("Perf".equals(element.id)) {
             int opacity = config.hudPerfOpacity;
@@ -973,83 +1097,101 @@ public final class OverlayPositionScreen extends GuiScreen {
                     element.x, element.y,
                     element.x + element.w, element.y + element.h,
                     RecordableConfig.applyOpacity(0x99000000, opacity));
-            String[] lines = {
-                    "Capture 60 FPS",
-                    "Encoder 60 FPS",
-                    "Memory 1024 MiB",
-                    "Queue OK"
-            };
+            String[] lines = previewPerformanceLines(config);
             for (int index = 0; index < lines.length; index++) {
                 fontRendererObj.drawString(
                         lines[index],
                         element.x + 3,
                         element.y + 3 + index * 10,
                         RecordableConfig.applyOpacity(
-                                index == 3 ? 0xFF9BE28F : 0xFFD0D0D0,
+                                index == lines.length - 1
+                                        ? 0xFF9BE28F
+                                        : 0xFFD0D0D0,
                                 opacity));
             }
         } else if ("Classic".equals(element.id)) {
-            int accent = 0xFF000000 | config.getOverlayColorRgb();
+            int accent = skin != null
+                    ? 0xFF000000 | (skin.accent & 0x00FFFFFF)
+                    : 0xFF000000 | config.getOverlayColorRgb();
+            int panelBackground = skin != null
+                    ? skin.panelBackground
+                    : 0x99000000;
             Gui.drawRect(
-                    element.x, element.y,
+                    element.x - 3, element.y - 3,
                     element.x + element.w, element.y + element.h,
-                    0xB0000000);
+                    panelBackground);
             Gui.drawRect(
-                    element.x, element.y,
-                    element.x + element.w, element.y + 2,
-                    RecordableConfig.applyOpacity(accent, 75));
-            String[] lines = {
-                    "REC 00:12:34",
-                    "Cap 60 | Enc 60 FPS",
-                    "Est. size: 128 MiB",
-                    "Queue: OK | Mem 1024 MiB"
-            };
-            for (int index = 0; index < lines.length; index++) {
-                fontRendererObj.drawString(
-                        lines[index],
-                        element.x + 6,
-                        element.y + 5 + index * 11,
-                        index == 3 ? 0xFF9BE28F : 0xFFE5E5E5);
-            }
+                    element.x - 3, element.y - 3,
+                    element.x + element.w, element.y - 2,
+                    RecordableConfig.applyOpacity(accent, 67));
+            String[] lines = previewClassicLines(config);
+            drawRecordDot(element.x, element.y + 2, accent);
+            fontRendererObj.drawStringWithShadow(
+                    lines[0], element.x + 13, element.y, 0xFFFFFFFF);
+            fontRendererObj.drawStringWithShadow(
+                    lines[1],
+                    element.x,
+                    element.y + 12,
+                    skin != null ? skin.textSecondary : 0xFFE0E0E0);
+            fontRendererObj.drawStringWithShadow(
+                    lines[2], element.x, element.y + 23, 0xFFFFFFFF);
+            fontRendererObj.drawStringWithShadow(
+                    lines[3], element.x, element.y + 34, 0xFF9BE28F);
         } else if ("Synthwave".equals(element.id)) {
-            int accent = 0xFF000000 | config.getOverlayColorRgb();
+            int magenta = skin != null ? skin.accent : 0xFFFF2D95;
+            int cyan = skin != null ? skin.accentHover : 0xFF00E5FF;
+            int panelBackground = skin != null
+                    ? skin.panelBackground
+                    : 0xE61A0B2E;
+            int textColor = skin != null ? skin.textPrimary : cyan;
             Gui.drawRect(
                     element.x, element.y,
                     element.x + element.w, element.y + element.h,
-                    0xE61A0B2E);
+                    panelBackground);
             Gui.drawRect(
                     element.x, element.y,
                     element.x + element.w, element.y + 1,
-                    accent);
+                    magenta);
             Gui.drawRect(
                     element.x, element.y + element.h - 1,
                     element.x + element.w, element.y + element.h,
-                    0xFF00E5FF);
-            String[] lines = {
+                    cyan);
+            Gui.drawRect(
+                    element.x, element.y,
+                    element.x + 1, element.y + element.h,
+                    magenta);
+            Gui.drawRect(
+                    element.x + element.w - 1, element.y,
+                    element.x + element.w, element.y + element.h,
+                    cyan);
+            drawRecordDot(element.x + 6, element.y + 5, magenta);
+            fontRendererObj.drawStringWithShadow(
                     "REC 00:12:34",
-                    "EST 128 MiB",
-                    "C 60 E 60 | Q OK"
-            };
-            for (int index = 0; index < lines.length; index++) {
-                fontRendererObj.drawString(
-                        lines[index],
-                        element.x + 8,
-                        element.y + 4 + index * 10,
-                        index == 0 ? 0xFF00E5FF : 0xFFD7B8FF);
-            }
+                    element.x + 16,
+                    element.y + 4,
+                    textColor);
         } else if ("Mic".equals(element.id)) {
             int opacity = config.hudMicOpacity;
+            boolean live = !config.microphonePushToTalk;
+            String label = config.microphonePushToTalk
+                    ? "MIC (PTT)"
+                    : "MIC";
             Gui.drawRect(
                     element.x, element.y,
                     element.x + element.w, element.y + element.h,
-                    RecordableConfig.applyOpacity(0xAA000000, opacity));
-            drawUnscaledText(
-                    config.microphonePushToTalk
-                            ? "MIC (PTT LIVE)"
-                            : "MIC",
-                    element.x,
-                    element.y,
-                    RecordableConfig.applyOpacity(0xFFFF7777, opacity));
+                    RecordableConfig.applyOpacity(0xA0000000, opacity));
+            int text = RecordableConfig.applyOpacity(
+                    live ? 0xFFFFFFFF : 0xFF888888,
+                    opacity);
+            drawRecordDot(
+                    element.x + 3,
+                    element.y + 3,
+                    RecordableConfig.applyOpacity(
+                            live ? 0xFFFF3030 : 0xFF555555,
+                            opacity));
+            drawMicrophoneGlyph(element.x + 13, element.y + 2, text);
+            fontRendererObj.drawStringWithShadow(
+                    label, element.x + 23, element.y + 2, text);
         }
     }
 

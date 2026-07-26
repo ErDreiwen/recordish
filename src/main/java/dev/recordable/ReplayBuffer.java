@@ -51,6 +51,9 @@ public final class ReplayBuffer {
     private static final long SAVE_ABORT_GRACE_MILLIS = 2000L;
     private static final String RECOVERY_MARKER =
             ".preserve-replay-chunks";
+    static final int MAX_REPLAY_WIDTH = 1280;
+    static final int MAX_REPLAY_HEIGHT = 720;
+    static final int MAX_REPLAY_FPS = 30;
 
     private final Object lock = new Object();
     private final Object saveLifecycleLock = new Object();
@@ -129,27 +132,24 @@ public final class ReplayBuffer {
         saveAbortRequested = false;
         int evenWidth = makeEven(Math.max(2, width));
         int evenHeight = makeEven(Math.max(2, height));
-        int[] preset = RecordableConfig.resolveReplayPreset(
+        int[] replayDimensions = resolveStoredDimensions(
+                evenWidth,
+                evenHeight,
+                quality);
+        int replayWidth = replayDimensions[0];
+        int replayHeight = replayDimensions[1];
+        int replayFps = resolveTargetFps(
                 quality,
                 evenHeight,
                 fps);
-        int cappedHeight = preset[0] <= 0
-                ? evenHeight
-                : Math.min(evenHeight, makeEven(preset[0]));
-        double scale = cappedHeight / (double) evenHeight;
-        int replayWidth = makeEven(
-                Math.max(2, (int) Math.round(evenWidth * scale)));
-        int replayFps = Math.max(
-                1,
-                Math.min(Math.max(1, fps), Math.max(1, preset[1])));
         int seconds = Math.max(1, durationSeconds);
         long budget = calculateDiskBudget(
                 RecordableConfig.get().getOutputDirectory(),
                 replayWidth,
-                cappedHeight,
+                replayHeight,
                 replayFps,
                 seconds);
-        long bytesPerSecond = replayWidth * (long) cappedHeight
+        long bytesPerSecond = replayWidth * (long) replayHeight
                 * 3L * replayFps;
         long budgetSeconds = bytesPerSecond <= 0L
                 ? seconds
@@ -164,7 +164,7 @@ public final class ReplayBuffer {
             sourceWidth = evenWidth;
             sourceHeight = evenHeight;
             storedWidth = replayWidth;
-            storedHeight = cappedHeight;
+            storedHeight = replayHeight;
             targetFps = replayFps;
             frameIntervalNanos = Math.max(
                     1L,
@@ -332,14 +332,31 @@ public final class ReplayBuffer {
     }
 
     public void addFrame(byte[] rgbPixels) {
-        addFrame(rgbPixels, System.nanoTime());
+        addFrame(
+                rgbPixels,
+                sourceWidth,
+                sourceHeight,
+                System.nanoTime());
     }
 
     public void addFrame(
             byte[] rgbPixels,
             long capturedAtNanos) {
-        if (!active.get() || saving.get() || rgbPixels == null) return;
-        long required = sourceWidth * (long) sourceHeight * 3L;
+        addFrame(
+                rgbPixels,
+                sourceWidth,
+                sourceHeight,
+                capturedAtNanos);
+    }
+
+    public void addFrame(
+            byte[] rgbPixels,
+            int frameWidth,
+            int frameHeight,
+            long capturedAtNanos) {
+        if (!active.get() || rgbPixels == null) return;
+        if (frameWidth <= 0 || frameHeight <= 0) return;
+        long required = frameWidth * (long) frameHeight * 3L;
         if (required > Integer.MAX_VALUE
                 || rgbPixels.length < (int) required) {
             return;
@@ -357,8 +374,8 @@ public final class ReplayBuffer {
 
         byte[] stored = scaleRgb(
                 rgbPixels,
-                sourceWidth,
-                sourceHeight,
+                frameWidth,
+                frameHeight,
                 storedWidth,
                 storedHeight);
         PendingFrame pending =
@@ -562,6 +579,9 @@ public final class ReplayBuffer {
                 }
             } catch (IOException ignored) {
             }
+            // FrameRef is immutable. Pinning its backing chunks below makes
+            // this a stable save view while the writer keeps appending new
+            // frames to the live rolling index.
             FrameRef[] snapshot =
                     index.toArray(new FrameRef[index.size()]);
             int lastExclusive = snapshot.length;
@@ -724,9 +744,19 @@ public final class ReplayBuffer {
         }
 
         RecordableConfig config = RecordableConfig.get();
-        Path directory = config.getClipDirectory();
-        Files.createDirectories(directory);
         String prefix = sanitizePrefix(requestedPrefix);
+        boolean autoClip = prefix.startsWith("on-")
+                || "auto-clip".equals(prefix);
+        Path directory = autoClip
+                ? StorageManager.getAutoClipTriggerDirectory(
+                        config,
+                        prefix)
+                : config.getOutputDirectory();
+        if (directory == null) {
+            throw new IOException(
+                    "The replay output directory is not configured.");
+        }
+        Files.createDirectories(directory);
         Path output = uniquePath(
                 directory,
                 prefix + "-" + FILE_TIME.format(LocalDateTime.now()),
@@ -1207,6 +1237,77 @@ public final class ReplayBuffer {
         return target;
     }
 
+    /**
+     * Caps a standalone replay readback without changing its aspect ratio.
+     * Shared recording frames may be larger, but are downscaled to the same
+     * storage ceiling by {@link #resolveStoredDimensions(int, int, String)}.
+     */
+    static int[] capSourceDimensions(int width, int height) {
+        int safeWidth = makeEven(Math.max(2, width));
+        int safeHeight = makeEven(Math.max(2, height));
+        double scale = Math.min(
+                1.0D,
+                Math.min(
+                        MAX_REPLAY_WIDTH / (double) safeWidth,
+                        MAX_REPLAY_HEIGHT / (double) safeHeight));
+        return scaledDimensions(safeWidth, safeHeight, scale);
+    }
+
+    static int[] resolveStoredDimensions(
+            int width,
+            int height,
+            String quality) {
+        int safeWidth = makeEven(Math.max(2, width));
+        int safeHeight = makeEven(Math.max(2, height));
+        int[] preset = RecordableConfig.resolveReplayPreset(
+                quality,
+                safeHeight,
+                MAX_REPLAY_FPS);
+        int qualityHeight = preset[0] <= 0
+                ? safeHeight
+                : Math.min(safeHeight, makeEven(preset[0]));
+        double scale = Math.min(
+                qualityHeight / (double) safeHeight,
+                Math.min(
+                        MAX_REPLAY_WIDTH / (double) safeWidth,
+                        MAX_REPLAY_HEIGHT / (double) safeHeight));
+        return scaledDimensions(safeWidth, safeHeight, scale);
+    }
+
+    static int resolveTargetFps(
+            String quality,
+            int sourceHeight,
+            int requestedFps) {
+        int safeRequestedFps = Math.max(1, requestedFps);
+        int[] preset = RecordableConfig.resolveReplayPreset(
+                quality,
+                Math.max(2, sourceHeight),
+                safeRequestedFps);
+        return Math.max(
+                1,
+                Math.min(
+                        MAX_REPLAY_FPS,
+                        Math.min(
+                                safeRequestedFps,
+                                Math.max(1, preset[1]))));
+    }
+
+    private static int[] scaledDimensions(
+            int width,
+            int height,
+            double requestedScale) {
+        double scale = Math.max(0.0D, Math.min(1.0D, requestedScale));
+        int scaledWidth = makeEven(Math.max(
+                2,
+                (int) Math.round(width * scale)));
+        int scaledHeight = makeEven(Math.max(
+                2,
+                (int) Math.round(height * scale)));
+        return new int[]{
+                Math.min(MAX_REPLAY_WIDTH, scaledWidth),
+                Math.min(MAX_REPLAY_HEIGHT, scaledHeight)};
+    }
+
     private static long calculateDiskBudget(
             Path directory,
             int width,
@@ -1240,14 +1341,16 @@ public final class ReplayBuffer {
         RecordableConfig config = RecordableConfig.get();
         long free = DiskSpaceGuardian.getFreeSpaceMB(
                 config.getOutputDirectory());
-        int[] preset = RecordableConfig.resolveReplayPreset(
+        int[] dimensions = resolveStoredDimensions(
+                width,
+                height,
+                config.replayBufferQuality);
+        int targetFps = resolveTargetFps(
                 config.replayBufferQuality,
                 height,
                 fps);
-        int targetHeight = preset[0] <= 0 ? height : preset[0];
-        int targetFps = Math.max(1, preset[1]);
-        long estimatedMb = makeEven(width)
-                * (long) makeEven(targetHeight) * 3L
+        long estimatedMb = dimensions[0]
+                * (long) dimensions[1] * 3L
                 * targetFps * Math.max(1, durationSeconds)
                 / (1024L * 1024L);
         if (free >= 0L

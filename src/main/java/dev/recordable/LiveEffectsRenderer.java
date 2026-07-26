@@ -51,8 +51,12 @@ public final class LiveEffectsRenderer {
 
     private static final Map<String, CachedImageTexture> IMAGE_TEXTURES =
         new HashMap<String, CachedImageTexture>();
+    /*
+     * LWJGL 2 requires capacity for glGetFloat's maximum 16-value result even
+     * when GL_CURRENT_COLOR writes only RGBA.
+     */
     private static final FloatBuffer COLOR_READ_BUFFER =
-        BufferUtils.createFloatBuffer(4);
+        BufferUtils.createFloatBuffer(16);
 
     private static long filterTick;
     private static long watermarkPreviewAnchorMs;
@@ -1089,45 +1093,29 @@ public final class LiveEffectsRenderer {
                 continue;
             }
 
-            int first = 0xFF000000 | (region.color & 0xFFFFFF);
-            int second =
-                0xFF000000 | (region.colorEnd & 0xFFFFFF);
-            if (region.style == CensorRegion.Style.GRADIENT) {
-                drawCensorGradient(
-                    left,
-                    top,
-                    right,
-                    bottom,
-                    first,
-                    second,
-                    region.gradientDirection);
-            } else {
-                Gui.drawRect(left, top, right, bottom, first);
-            }
+            int fill = 0xFF000000 | (region.color & 0xFFFFFF);
+            Gui.drawRect(left, top, right, bottom, fill);
 
-            if (region.showLabel
+            String tag = region.showLabel
                     && region.label != null
-                    && !region.label.trim().isEmpty()) {
+                    && !region.label.trim().isEmpty()
+                ? region.label.trim()
+                : (region.style == null
+                    ? CensorRegion.Style.SOLID.name()
+                    : region.style.name());
+            if (!tag.isEmpty()) {
                 int availableWidth = Math.max(0, right - left - 4);
                 if (availableWidth <= 0) {
                     continue;
                 }
                 String label = font.trimStringToWidth(
-                    region.label,
+                    "\u25CF " + tag,
                     availableWidth);
-                int textX = left
-                    + Math.max(
-                        2,
-                        (right - left - font.getStringWidth(label)) / 2);
-                int textY = top
-                    + Math.max(
-                        2,
-                        (bottom - top - font.FONT_HEIGHT) / 2);
                 font.drawStringWithShadow(
                     label,
-                    (float) textX,
-                    (float) textY,
-                    0xFF000000 | (region.textColor & 0xFFFFFF));
+                    (float) (left + 2),
+                    (float) (top + 2),
+                    0xFFFFFFFF);
             }
         }
     }

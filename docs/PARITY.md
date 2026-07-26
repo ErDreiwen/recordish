@@ -57,12 +57,29 @@ staged FFmpeg and FFprobe, and passed a live executable probe. The resulting
 binary then passed the recording/audio-finalization and disk-backed replay
 pipeline smoke tests with FFprobe inspection.
 
-Before final visual sign-off, launch the installed Java 8 client, visually and
-interactively inspect every V1-0.09 screen at compact and normal window sizes,
-and record and play back a representative BedWars session. Prism and Lunar
-Vanilla/Forge now contain the same verified JAR but still need that fresh
-launch check; Lunar's branded Forge/Ichor runtime remains a separate
-unsupported classpath boundary.
+The final desktop pass was also exercised in the installed Prism Java 8
+client:
+
+- The exact installed JAR loaded as a Forge mod, both Record-able mixins
+  applied, and the direct OpenAL loopback route initialized.
+- The title-screen button, video collection, settings composition, scrolling,
+  tooltips, and FFmpeg states were visually compared at the same 870x519
+  window geometry used for the official 26.2 reference captures.
+- A manual FFmpeg refresh completed asynchronously while typed search text,
+  cursor focus, and filtered settings remained intact.
+- Hardware preflight exposed the working NVIDIA NVENC encoder on the test
+  RTX 5070 Ti while correctly rejecting unavailable AMF and QSV devices.
+- A real local-world recording was started, paused for two seconds, resumed,
+  and finalized. FFprobe reported H.264 video at 854x480 and 60 FPS plus
+  48 kHz stereo AAC; the 8.182-second video and 8.170-second audio streams
+  remained within 12 ms, and an extracted midpoint frame was non-black.
+- The resulting recording appeared in the in-game collection with its
+  thumbnail and action controls.
+
+Prism and Lunar Vanilla/Forge contain the same byte-identical verified JAR
+and managed FFmpeg/FFprobe binaries. Lunar's branded Forge/Ichor runtime
+remains a separate unsupported classpath boundary because it filters the
+external Forge JAR before Forge scans the profile.
 
 Replay playback detection is necessarily heuristic because legacy Replay Mod
 does not expose a stable cross-version playback API. Failures are closed and

@@ -10,6 +10,18 @@ public final class ThemedPanel {
     private ThemedPanel() {
     }
 
+    /**
+     * Darkens the legacy dirt/world background to match the modern menu
+     * backdrop used by Record-able 26.2 while retaining a faint sense of the
+     * underlying screen when opened in-game.
+     */
+    public static void drawMenuBackdrop(int width, int height) {
+        ThemeColors colors = ThemeEngine.get().colors();
+        int tint = 0xDC000000
+                | colors.sectionBackground & 0x00FFFFFF;
+        Gui.drawRect(0, 0, width, height, tint);
+    }
+
     /** Draws a themed panel with the two-pixel accent bar used in V1-0.09. */
     public static void drawPanel(
             int left, int top, int right, int bottom) {
