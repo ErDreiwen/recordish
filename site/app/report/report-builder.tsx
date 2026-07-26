@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { COMMUNITY_DISCORD, PORT_ISSUES } from "../links";
 
 type Category =
   | "bug"
@@ -226,7 +227,7 @@ export function ReportBuilder() {
       title: reportTitle(report),
       body: markdown,
     });
-    return `https://github.com/ErDreiwen/record-able/issues/new?${parameters.toString()}`;
+    return `${PORT_ISSUES}?${parameters.toString()}`;
   }, [markdown, report]);
   const completenessItems =
     reportMode === "quick"
@@ -438,8 +439,8 @@ export function ReportBuilder() {
             <p>
               That one is not mine to fix. I did not build it, I do not
               maintain it, and a report here would go straight in the
-              imaginary bin. Give the actual Record-able team the grief using
-              their official links.
+              imaginary bin. Use the original Modrinth page, or ask in my
+              Discord if you are not sure where the problem belongs.
             </p>
             <p className="upstream-fine-print">
               No disrespect to the original lot. It is simply their mod, their
@@ -448,11 +449,11 @@ export function ReportBuilder() {
             <div className="upstream-links">
               <a
                 className="button button-primary"
-                href="https://discord.gg/Qv32Natvb2"
+                href={COMMUNITY_DISCORD}
                 rel="noreferrer"
                 target="_blank"
               >
-                Official Discord ↗
+                Ask in my Discord ↗
               </a>
               <a
                 className="button"
@@ -971,21 +972,20 @@ export function ReportBuilder() {
           <h3>Give us the useful bits.</h3>
           <p>
             Port bugs belong on the record-ish issue tracker. If you are
-            properly stuck, the original Record-able Discord may still know
-            the recording side of things.
+            properly stuck, ask in my Discord and bring the useful bits.
           </p>
           <div className="handoff-links">
             <a
               className="button"
-              href="https://discord.gg/Qv32Natvb2"
+              href={COMMUNITY_DISCORD}
               rel="noreferrer"
               target="_blank"
             >
-              Open Discord ↗
+              Open my Discord ↗
             </a>
             <a
               className="button"
-              href="https://github.com/ErDreiwen/record-able/issues/new"
+              href={PORT_ISSUES}
               rel="noreferrer"
               target="_blank"
             >

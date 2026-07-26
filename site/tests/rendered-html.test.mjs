@@ -18,7 +18,7 @@ async function render(path = "/") {
   });
 }
 
-test("server-renders the Manc-attitude record-ish homepage", async () => {
+test("server-renders the unofficial record-ish homepage", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -28,14 +28,13 @@ test("server-renders the Manc-attitude record-ish homepage", async () => {
     html,
     /<title>record-ish .* A Record-able Port for Forge 1\.8\.9<\/title>/i,
   );
-  assert.match(html, /MANC ATTITUDE \/ UNOFFICIAL \/ FORGE 1\.8\.9/);
+  assert.match(html, /UNOFFICIAL \/ COMMUNITY PORT \/ FORGE 1\.8\.9/);
   assert.match(html, /<h1[^>]*aria-label="record-ish"[^>]*>/i);
   assert.match(
     html,
     /class="brand-credit"[^>]*>a Record-able port<\/p>/i,
   );
   assert.match(html, /Record Minecraft\. Keep the good bits\./);
-  assert.match(html, /MCR ATTITUDE \/ ZERO CORPORATE WAFFLE/);
   assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
   assert.match(html, /Java[\s\S]*8/);
@@ -51,17 +50,17 @@ test("server-renders the Manc-attitude record-ish homepage", async () => {
   assert.match(html, /Original Record-able by/);
   assert.match(html, /unofficial as it gets and never claiming otherwise/i);
   assert.match(html, /Vanilla\/Forge/);
-  assert.match(html, new RegExp(expectedChecksum));
-  assert.match(html, /https:\/\/github\.com\/ErDreiwen/);
-  assert.match(html, /https:\/\/modrinth\.com\/mod\/record-able/);
-  assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
+  assert.doesNotMatch(html, new RegExp(expectedChecksum));
+  assert.match(html, /https:\/\/github\.com\/ErDreiwen\/record-ish/);
+  assert.match(html, /Baguette\?/);
+  assert.match(
+    html,
+    /https:\/\/www\.google\.com\/maps\/search\/\?api=1(?:&|&amp;)query=Pollen\+Bakery\+Kampus\+42\+Aytoun\+Street\+Manchester\+M1\+3GL/,
+  );
+  assert.match(html, /https:\/\/discord\.gg\/YRJrvgverM/);
   assert.match(
     html,
     /property="og:image" content="https:\/\/kmsi\.me\/og-record-ish\.png"/,
-  );
-  assert.match(
-    html,
-    /https:\/\/github\.com\/ErDreiwen\/record-able\/tree\/forge-1\.8\.9/,
   );
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -93,12 +92,12 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /Save \.md/);
   assert.match(
     html,
-    /https:\/\/github\.com\/ErDreiwen\/record-able\/issues\/new/,
+    /https:\/\/github\.com\/ErDreiwen\/record-ish\/issues\/new/,
   );
   assert.match(html, /Nothing gets uploaded here/);
   assert.match(html, /removed private information/);
   assert.match(html, /Tick the privacy box first/);
-  assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
+  assert.match(html, /https:\/\/discord\.gg\/YRJrvgverM/);
 });
 
 test("server-renders one verified, pissy download page", async () => {
@@ -119,6 +118,8 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
   assert.match(html, /Java[\s\S]*8/);
+  assert.match(html, /File fingerprint \(SHA-256\)/);
+  assert.match(html, /SHA-256 is the JAR(?:&#x27;|')s file fingerprint/);
   assert.match(html, new RegExp(expectedChecksum));
   assert.match(
     html,
@@ -132,18 +133,19 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /https:\/\/modrinth\.com\/mod\/record-able/);
   assert.match(
     html,
-    /https:\/\/github\.com\/ErDreiwen\/record-able\/tree\/forge-1\.8\.9/,
+    /https:\/\/github\.com\/ErDreiwen\/record-ish/,
   );
   assert.match(html, /MIT licensed/);
 });
 
 test("keeps the technical report and sends original-mod complaints upstream", async () => {
-  const [builder, css] = await Promise.all([
+  const [builder, css, links] = await Promise.all([
     readFile(
       new URL("../app/report/report-builder.tsx", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/links.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(builder, /reportMode === "technical"/);
@@ -152,7 +154,10 @@ test("keeps the technical report and sends original-mod complaints upstream", as
   assert.match(builder, /Relevant log excerpt/);
   assert.match(builder, /Original mod\? Fuck off upstream, mate\./);
   assert.match(builder, /absolutely not my problem/);
-  assert.match(builder, /https:\/\/discord\.gg\/Qv32Natvb2/);
+  assert.match(builder, /COMMUNITY_DISCORD/);
+  assert.match(builder, /PORT_ISSUES/);
+  assert.match(links, /https:\/\/discord\.gg\/YRJrvgverM/);
+  assert.match(links, /https:\/\/github\.com\/ErDreiwen\/record-ish/);
   assert.match(builder, /https:\/\/modrinth\.com\/mod\/record-able/);
   assert.match(builder, /report-builder-upstream/);
   assert.match(css, /\.report-builder-upstream/);

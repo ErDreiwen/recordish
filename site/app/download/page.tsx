@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMMUNITY_DISCORD, PORT_REPOSITORY } from "../links";
 import { CHECKSUM_PATH, DOWNLOAD_PATH, RELEASE } from "../release";
 import { WindowShell } from "../window-shell";
 
@@ -51,7 +52,8 @@ export default function DownloadPage() {
           </a>
           <p className="download-browser-note">
             Browser whinging about a JAR? Fair enough. Check the filename and
-            SHA-256 below. Do not rename it to <code>.exe</code>, you weapon.
+            file fingerprint below. Do not rename it to <code>.exe</code>, you
+            weapon.
           </p>
         </section>
 
@@ -129,6 +131,11 @@ export default function DownloadPage() {
           <section className="download-panel download-verify" aria-labelledby="verify-title">
             <p className="section-number">03 / VERIFY</p>
             <h2 id="verify-title">Paranoid? Good. Check it.</h2>
+            <p>
+              SHA-256 is the JAR&apos;s file fingerprint. If it matches, you
+              downloaded the file we shipped rather than a damaged or swapped
+              copy.
+            </p>
             <dl className="release-facts">
               <div>
                 <dt>Filename</dt>
@@ -141,17 +148,17 @@ export default function DownloadPage() {
                 <dd>{RELEASE.fileSize}</dd>
               </div>
               <div>
-                <dt>SHA-256</dt>
+                <dt>File fingerprint (SHA-256)</dt>
                 <dd>
                   <code>{RELEASE.sha256}</code>
                 </dd>
               </div>
             </dl>
             <details className="hash-help">
-              <summary>How do I check the hash?</summary>
+              <summary>How do I check the fingerprint?</summary>
               <p>
                 Open PowerShell in your Downloads folder and run this. The
-                result should match the SHA-256 above exactly.
+                result should match the fingerprint above exactly.
               </p>
               <pre>
                 <code>
@@ -199,14 +206,14 @@ export default function DownloadPage() {
         <nav aria-label="Download page links">
           <Link href="/docs">Docs</Link>
           <a
-            href="https://github.com/ErDreiwen/record-able/tree/forge-1.8.9"
+            href={PORT_REPOSITORY}
             rel="noreferrer"
             target="_blank"
           >
             Source
           </a>
           <a
-            href="https://discord.gg/Qv32Natvb2"
+            href={COMMUNITY_DISCORD}
             rel="noreferrer"
             target="_blank"
           >

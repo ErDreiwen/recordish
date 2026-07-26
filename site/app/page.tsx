@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { RELEASE } from "./release";
+import {
+  BAGUETTE_MAP,
+  COMMUNITY_DISCORD,
+  PORT_REPOSITORY,
+} from "./links";
 import { WindowShell } from "./window-shell";
 
 export const metadata: Metadata = {
@@ -18,7 +22,7 @@ export default function Home() {
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="issue-line">
-              MANC ATTITUDE / UNOFFICIAL / FORGE 1.8.9
+              UNOFFICIAL / COMMUNITY PORT / FORGE 1.8.9
             </p>
             <div className="brand-lockup">
               <div className="brand-stack">
@@ -62,7 +66,6 @@ export default function Home() {
             <p className="release-note">
               Unofficial. Community-built. Not pretending otherwise. · v1.0.0
             </p>
-            <p className="manc-stamp">MCR ATTITUDE / ZERO CORPORATE WAFFLE</p>
           </div>
 
           <aside className="cover-note" aria-label="Release summary">
@@ -150,7 +153,7 @@ export default function Home() {
           <p className="fork-status">
             The Forge 1.8.9 fork is live on{" "}
             <a
-              href="https://github.com/ErDreiwen/record-able/tree/forge-1.8.9"
+              href={PORT_REPOSITORY}
               rel="noreferrer"
               target="_blank"
             >
@@ -174,35 +177,30 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className="checksum" aria-labelledby="checksum-title">
-          <span id="checksum-title">SHA-256</span>
-          <code>{RELEASE.sha256}</code>
-        </section>
       </main>
 
       <footer className="site-footer">
         <p>
-          Built with Manc attitude, not corporate polish · record-ish is
-          unofficial · Original Record-able by Minewind&apos;s Jo Eusebe · Port
-          maintained by ErDreiwen · MIT licensed
+          record-ish is unofficial · Original Record-able by Minewind&apos;s Jo
+          Eusebe · Port maintained by ErDreiwen · MIT licensed
         </p>
         <nav aria-label="Social links">
           <a
-            href="https://github.com/ErDreiwen"
+            href={PORT_REPOSITORY}
             rel="noreferrer"
             target="_blank"
           >
             GitHub
           </a>
           <a
-            href="https://modrinth.com/mod/record-able"
+            href={BAGUETTE_MAP}
             rel="noreferrer"
             target="_blank"
           >
-            Modrinth
+            Baguette?
           </a>
           <a
-            href="https://discord.gg/Qv32Natvb2"
+            href={COMMUNITY_DISCORD}
             rel="noreferrer"
             target="_blank"
           >

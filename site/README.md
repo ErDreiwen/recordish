@@ -26,5 +26,5 @@ displayed SHA-256 checksum together when publishing a new release.
 The production site is a static Next.js export hosted by Vercel at
 `https://kmsi.me`. Vercel should use `site` as the project root.
 
-The Forge 1.8.9 branch is published at
-`https://github.com/ErDreiwen/record-able/tree/forge-1.8.9`.
+The Forge 1.8.9 port is published at
+`https://github.com/ErDreiwen/record-ish`.

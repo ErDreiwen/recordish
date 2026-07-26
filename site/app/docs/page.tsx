@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMMUNITY_DISCORD } from "../links";
 import { WindowShell } from "../window-shell";
 
 export const metadata: Metadata = {
@@ -221,7 +222,7 @@ export default function DocsPage() {
             Original source
           </a>
           <a
-            href="https://discord.gg/Qv32Natvb2"
+            href={COMMUNITY_DISCORD}
             rel="noreferrer"
             target="_blank"
           >

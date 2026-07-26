@@ -430,18 +430,6 @@ summary:focus-visible {
   font-size: 0.67rem;
 }
 
-.manc-stamp {
-  display: inline-block;
-  margin: 1rem 0 0;
-  padding: 0.35rem 0.5rem;
-  color: #7a2e14;
-  font: 700 0.58rem/1 var(--mono);
-  letter-spacing: 0.12em;
-  border: 2px solid var(--orange);
-  background: #fff1c9;
-  transform: rotate(-1.2deg);
-}
-
 .cover-note {
   align-self: start;
   padding: 1rem 0 1.2rem 1rem;
@@ -621,28 +609,6 @@ summary:focus-visible {
   margin: 0;
   font-size: 0.73rem;
   line-height: 1.5;
-}
-
-.checksum {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 1rem;
-  align-items: center;
-  padding: 0.75rem clamp(1.5rem, 5vw, 4rem);
-  color: #535b65;
-  font-size: 0.58rem;
-  border-top: 1px solid #fff;
-  background: #e5e1d5;
-}
-
-.checksum span {
-  font-weight: 700;
-  letter-spacing: 0.12em;
-}
-
-.checksum code {
-  overflow-wrap: anywhere;
-  font: 0.58rem/1.4 var(--mono);
 }
 
 .site-footer {
@@ -2210,15 +2176,10 @@ summary:focus-visible {
     grid-column: 2;
   }
 
-  .checksum,
   .site-footer {
     align-items: flex-start;
     grid-template-columns: 1fr;
     flex-direction: column;
-  }
-
-  .checksum {
-    display: grid;
   }
 
   .status-bar {
