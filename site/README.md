@@ -1,7 +1,7 @@
-# Recordable Community website
+# record-ish website
 
 The simple product site, Report Center, FAQ, and web documentation for the
-unofficial Recordable Community Forge 1.8.9 port of Record-able.
+unofficial record-ish Forge 1.8.9 port of Record-able.
 
 ## Local development
 

@@ -15,7 +15,7 @@ Use the website's **Report Center** to prepare a complete report for:
 The builder runs locally in the browser. It can copy the finished report as
 Markdown or download it as a `.md` file; it does not claim to submit anything.
 
-Until the public Recordable Community repository exists, share port reports
+Until the public record-ish repository exists, share port reports
 through the community Discord link. Problems with the original Fabric mod
 belong with the original project's support channels.
 

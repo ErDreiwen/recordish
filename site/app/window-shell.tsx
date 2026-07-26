@@ -9,8 +9,8 @@ export function WindowShell({ children }: { children: ReactNode }) {
       </a>
       <div className="window-shell">
         <div className="title-bar" aria-hidden="true">
-          <span className="app-mark">R</span>
-          <span className="title-bar-label">recordable-community.exe</span>
+          <span className="app-mark">r-</span>
+          <span className="title-bar-label">record-ish.exe</span>
           <span className="window-controls">
             <i>—</i>
             <i>□</i>

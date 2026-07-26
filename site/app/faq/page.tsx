@@ -6,7 +6,7 @@ import { WindowShell } from "../window-shell";
 export const metadata: Metadata = {
   title: "FAQ",
   description:
-    "Straight answers about the original Record-able Fabric mod and this mouthy unofficial Forge 1.8.9 community port.",
+    "Straight answers about the original Record-able Fabric mod and record-ish, its mouthy unofficial Forge 1.8.9 port.",
 };
 
 type Faq = {
@@ -30,8 +30,8 @@ const originalFaqs: Faq[] = [
     question: "Is this the official Record-able website?",
     answer: (
       <p>
-        Nope. This is Recordable Community, an unofficial Forge 1.8.9 port.
-        Use the{" "}
+        Nope. This is the record-ish site, an unofficial Forge 1.8.9 port. Use
+        the{" "}
         <a
           href="https://modrinth.com/mod/record-able"
           rel="noreferrer"
@@ -107,12 +107,12 @@ const originalFaqs: Faq[] = [
 
 const communityFaqs: Faq[] = [
   {
-    question: "What is Recordable Community?",
+    question: "What is record-ish?",
     answer: (
       <p>
-        An unofficial, community-maintained Forge 1.8.9 port of Record-able.
-        We keep the original attribution and MIT license and claim precisely
-        none of the original author&apos;s credit.
+        An unofficial, community-maintained Forge 1.8.9 port of Record-able. We
+        keep the original attribution and MIT license and claim precisely none
+        of the original author&apos;s credit.
       </p>
     ),
   },
@@ -121,8 +121,7 @@ const communityFaqs: Faq[] = [
     answer: (
       <p>
         Minecraft 1.8.9, Forge 11.15.1.2318, and Java 8. Those versions. Do not
-        freestyle it. Keep one Record-able or Recordable Community JAR in the
-        profile.
+        freestyle it. Keep one Record-able or record-ish JAR in the profile.
       </p>
     ),
   },
@@ -264,7 +263,7 @@ export default function FaqPage() {
           </a>
           <a href="#community">
             <span>This scrappy port</span>
-            Recordable Community / Forge 1.8.9
+            record-ish / Forge 1.8.9
           </a>
         </nav>
 
@@ -278,7 +277,7 @@ export default function FaqPage() {
           <FaqGroup
             id="community"
             label="02 / OUR BIT"
-            title="Recordable Community"
+            title="record-ish"
             faqs={communityFaqs}
           />
         </div>

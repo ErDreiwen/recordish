@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const SITE_NAME = "Recordable Community — Unofficial Forge 1.8.9 Port";
+const SITE_NAME = "record-ish — A Record-able Port for Forge 1.8.9";
 const SITE_DESCRIPTION =
-  "The unofficial Forge 1.8.9 community port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.";
+  "record-ish is the unofficial Forge 1.8.9 port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.";
 
 function requestOrigin(
   host: string | null,
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
     requestHeaders.get("x-forwarded-proto"),
   );
-  const socialImage = new URL("/og-manc.png", origin).toString();
+  const socialImage = new URL("/og-record-ish.png", origin).toString();
 
   return {
     metadataBase: origin,
@@ -39,23 +39,23 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s · ${SITE_NAME}`,
     },
     description: SITE_DESCRIPTION,
-    applicationName: "Recordable Community",
+    applicationName: "record-ish",
     authors: [
       { name: "Minewind's Jo Eusebe (original Record-able)" },
-      { name: "ErDreiwen (community port)" },
+      { name: "ErDreiwen (record-ish community port)" },
     ],
     openGraph: {
       type: "website",
       title: SITE_NAME,
       description: SITE_DESCRIPTION,
-      siteName: "Recordable Community",
+      siteName: "record-ish",
       url: origin,
       images: [
         {
           url: socialImage,
-          width: 1731,
-          height: 909,
-          alt: "Recordable Community, the unofficial Forge 1.8.9 port with no corporate waffle",
+          width: 1718,
+          height: 916,
+          alt: "record-ish, an unofficial Record-able port for Forge 1.8.9",
         },
       ],
     },

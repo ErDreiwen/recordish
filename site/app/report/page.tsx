@@ -5,7 +5,7 @@ import { ReportBuilder } from "./report-builder";
 export const metadata: Metadata = {
   title: "Report Center",
   description:
-    "Tell us what broke properly and build a useful report for Recordable Community or the original Record-able mod.",
+    "Tell us what broke properly and build a useful report for record-ish or the original Record-able mod.",
 };
 
 export default function ReportPage() {

@@ -1,6 +1,6 @@
-# Recordable Community Forge 1.8.9 docs
+# record-ish Forge 1.8.9 docs
 
-Recordable Community is an unofficial Forge 1.8.9 port of Record-able by
+record-ish is an unofficial Forge 1.8.9 port of Record-able by
 Minewind's Jo Eusebe. It records Minecraft video, game audio, optional
 microphone audio, instant replays, and automatic clips from inside the game.
 

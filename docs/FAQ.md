@@ -1,6 +1,6 @@
-# Recordable Community FAQ
+# record-ish FAQ
 
-Recordable Community is an unofficial Forge 1.8.9 port of the original
+record-ish is an unofficial Forge 1.8.9 port of the original
 [Record-able](https://modrinth.com/mod/record-able) mod by Minewind's
 Jo Eusebe. The original attribution and MIT license are retained.
 
@@ -34,7 +34,7 @@ Use the support links on the original Modrinth page, especially the creator's
 Discord. Reports for this Forge port do not reach or represent the original
 maintainer.
 
-## Recordable Community
+## record-ish
 
 ### Is this an official release?
 

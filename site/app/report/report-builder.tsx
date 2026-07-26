@@ -109,7 +109,7 @@ function reportTitle(report: ReportState) {
 
 function projectLabel(project: Project) {
   return project === "community"
-    ? "Recordable Community — Forge 1.8.9"
+    ? "record-ish — Forge 1.8.9"
     : "Original Record-able — Fabric";
 }
 
@@ -321,8 +321,8 @@ export function ReportBuilder() {
                 value="community"
               />
               <span>
-                <strong>Recordable Community</strong>
-                <small>Community port · Forge 1.8.9</small>
+                <strong>record-ish</strong>
+                <small>A Record-able port · Forge 1.8.9</small>
               </span>
               <b>THIS PORT</b>
             </label>
@@ -694,7 +694,7 @@ export function ReportBuilder() {
           <h3>Take it to Discord for now.</h3>
           {report.project === "community" ? (
             <p>
-              The Community port&apos;s public issue tracker is not live yet.
+              The record-ish public issue tracker is not live yet.
               Copy or save the report, then take it to the official Record-able
               Discord. It will not send itself, and this page uploads nothing.
             </p>

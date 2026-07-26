@@ -5,7 +5,7 @@ import { WindowShell } from "../window-shell";
 export const metadata: Metadata = {
   title: "Docs",
   description:
-    "Install Recordable Community, get FFmpeg behaving, and fix the usual Forge 1.8.9 nonsense without the corporate waffle.",
+    "Install record-ish, get FFmpeg behaving, and fix the usual Forge 1.8.9 nonsense without the corporate waffle.",
 };
 
 const DOWNLOAD_PATH =
@@ -18,7 +18,7 @@ export default function DocsPage() {
         <header className="docs-header">
           <div>
             <p className="issue-line">
-              RIGHT THEN / FIELD MANUAL / COMMUNITY PORT 1.0.0
+              RIGHT THEN / FIELD MANUAL / RECORD-ISH 1.0.0
             </p>
             <h1>Docs. Read these before kicking off.</h1>
             <p>
@@ -54,8 +54,8 @@ export default function DocsPage() {
               <li>Start Minecraft with Java 8.</li>
             </ol>
             <p className="callout">
-              One Recordable Community JAR. Not two. If the clapperboard turns
-              up on the title screen, you are sorted.
+              One record-ish JAR. Not two. If the clapperboard turns up on the
+              title screen, you are sorted.
             </p>
           </section>
 
@@ -205,7 +205,7 @@ export default function DocsPage() {
             Back home
           </Link>
           <a className="button button-primary" href={DOWNLOAD_PATH} download>
-            Get Recordable Community
+            Get record-ish
           </a>
         </div>
       </main>

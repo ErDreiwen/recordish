@@ -5,14 +5,14 @@ import { WindowShell } from "./window-shell";
 const DOWNLOAD_PATH =
   "/downloads/recordable-1.0.0-forge-1.8.9.jar";
 const CHECKSUM =
-  "83716ADB9B2F6E6FC6B8D301DA4AFDA6F9CA11638396EA58430BAE80B08D7E3E";
+  "00D7E034DDD1E94B4E9A2B5B89C0AD09C7FE9A63E2291D4B3439A69925D6ED71";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Recordable Community — Unofficial Forge 1.8.9 Port",
+    absolute: "record-ish — A Record-able Port for Forge 1.8.9",
   },
   description:
-    "The unofficial Forge 1.8.9 community port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.",
+    "record-ish is the unofficial Forge 1.8.9 port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.",
 };
 
 export default function Home() {
@@ -25,8 +25,27 @@ export default function Home() {
               MANC ATTITUDE / UNOFFICIAL / FORGE 1.8.9
             </p>
             <div className="brand-lockup">
-              <h1 id="hero-title">Recordable</h1>
-              <span className="brand-tag">Community</span>
+              <div className="brand-stack">
+                <h1
+                  aria-label="record-ish"
+                  className="brand-logo"
+                  id="hero-title"
+                >
+                  <span aria-hidden="true" className="brand-record">
+                    record
+                  </span>
+                  <span aria-hidden="true" className="brand-dash">
+                    -
+                  </span>
+                  <span aria-hidden="true" className="brand-ish">
+                    ish
+                  </span>
+                </h1>
+                <p className="brand-credit">a Record-able port</p>
+                <span aria-hidden="true" className="brand-rec">
+                  <i /> REC
+                </span>
+              </div>
             </div>
             <p className="hero-tagline">
               Record Minecraft. Keep the good bits.
@@ -75,7 +94,7 @@ export default function Home() {
           </span>
         </section>
 
-        <section className="briefs" aria-label="Original mod and community port">
+        <section className="briefs" aria-label="Original mod and record-ish port">
           <article>
             <p className="section-number">01</p>
             <h2>The original</h2>
@@ -87,7 +106,7 @@ export default function Home() {
           </article>
           <article>
             <p className="section-number">02</p>
-            <h2>The Community port</h2>
+            <h2>The record-ish port</h2>
             <p>
               We dragged that desktop experience back to Forge 1.8.9 because
               BedWars players still live here. Maintained by ErDreiwen;
@@ -160,9 +179,9 @@ export default function Home() {
 
       <footer className="site-footer">
         <p>
-          Built with Manc attitude, not corporate polish · Recordable Community
-          is unofficial · Original Record-able by Minewind&apos;s Jo Eusebe ·
-          Port maintained by ErDreiwen · MIT licensed
+          Built with Manc attitude, not corporate polish · record-ish is
+          unofficial · Original Record-able by Minewind&apos;s Jo Eusebe · Port
+          maintained by ErDreiwen · MIT licensed
         </p>
         <nav aria-label="Social links">
           <a
