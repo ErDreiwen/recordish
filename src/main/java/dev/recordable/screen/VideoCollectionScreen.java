@@ -3,6 +3,7 @@ package dev.recordable.screen;
 import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableConfig;
 import dev.recordable.RecordableMod;
+import dev.recordable.RecordingManager;
 import dev.recordable.StorageManager;
 import dev.recordable.VideoMetadata;
 import dev.recordable.VideoShareUploader;
@@ -88,6 +89,7 @@ public final class VideoCollectionScreen extends GuiScreen {
     private boolean loading;
     private int scrollOffset;
     private boolean draggingScrollbar;
+    private RecordingManager.State observedRecordingState;
 
     private int contentLeft;
     private int contentWidth;
@@ -226,7 +228,25 @@ public final class VideoCollectionScreen extends GuiScreen {
         }
 
         applyFilter();
+        observedRecordingState =
+                RecordingManager.getInstance().getState();
         refreshVideos();
+    }
+
+    @Override
+    public void updateScreen() {
+        super.updateScreen();
+        RecordingManager.State currentState =
+                RecordingManager.getInstance().getState();
+        if (observedRecordingState != null
+                && observedRecordingState
+                        != RecordingManager.State.IDLE
+                && currentState == RecordingManager.State.IDLE) {
+            observedRecordingState = currentState;
+            refreshVideos();
+            return;
+        }
+        observedRecordingState = currentState;
     }
 
     private void addToolbarButton(
@@ -377,8 +397,7 @@ public final class VideoCollectionScreen extends GuiScreen {
                                 ? Files.walk(scanDirectory)
                                 : Files.list(scanDirectory);
                         try {
-                            stream.filter(Files::isRegularFile)
-                                    .filter(
+                            stream.filter(
                                             VideoCollectionScreen
                                                     ::isSupportedVideo)
                                     .forEach(path -> {
@@ -1636,6 +1655,9 @@ public final class VideoCollectionScreen extends GuiScreen {
                 || sharing) {
             return;
         }
+        if (!ensureVideoAvailable(metadata.file)) {
+            return;
+        }
         shareTarget = metadata;
         shareRetentionDrawerOpen = false;
         shareOverlayMessage = null;
@@ -1663,6 +1685,9 @@ public final class VideoCollectionScreen extends GuiScreen {
             return;
         }
         final Path file = metadata.file;
+        if (!ensureVideoAvailable(file)) {
+            return;
+        }
         shareRetentionDrawerOpen = false;
         sharing = true;
         shareOverlayMessage = null;
@@ -2043,9 +2068,30 @@ public final class VideoCollectionScreen extends GuiScreen {
         if (file == null || mc == null) {
             return;
         }
+        if (!ensureVideoAvailable(file)) {
+            return;
+        }
         clearThumbnails();
         mc.displayGuiScreen(
                 new VideoPlayerScreen(file, this));
+    }
+
+    private boolean ensureVideoAvailable(Path file) {
+        if (file != null
+                && Files.isRegularFile(file)
+                && StorageManager.isCompleteVideoFile(file)) {
+            return true;
+        }
+        shareTarget = null;
+        shareRetentionDrawerOpen = false;
+        refreshVideos();
+        setStatus(
+                tr(
+                        "screen.recordable.video_collection.file_missing",
+                        "That recording is no longer available. "
+                                + "The list has been refreshed."),
+                true);
+        return false;
     }
 
     private void copyPath(Path file) {
@@ -2207,8 +2253,7 @@ public final class VideoCollectionScreen extends GuiScreen {
     }
 
     private static boolean isSupportedVideo(Path path) {
-        String name = filename(path).toLowerCase(Locale.ROOT);
-        return name.endsWith(".mp4") || name.endsWith(".mkv");
+        return StorageManager.isCompleteVideoFile(path);
     }
 
     private static String formatSizeMb(long bytes) {

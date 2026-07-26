@@ -18,6 +18,7 @@ import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AchievementEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -65,6 +66,7 @@ public final class RecordableClientEvents {
     private KeyBinding openCensorEditor;
     private boolean missingFfmpegNoticeShown;
     private boolean ffmpegWelcomeCheckStarted;
+    private volatile boolean worldUnloadCheckPending;
     private RecordableHomeButton homeButton;
     private GuiScreen initializedMainMenu;
 
@@ -194,6 +196,13 @@ public final class RecordableClientEvents {
         if (event.phase != TickEvent.Phase.END) return;
 
         Minecraft minecraft = Minecraft.getMinecraft();
+        if (worldUnloadCheckPending) {
+            worldUnloadCheckPending = false;
+            if (minecraft.theWorld == null
+                    || minecraft.currentScreen instanceof GuiMainMenu) {
+                requestSessionExit("client world unload");
+            }
+        }
         ensureInitialMainMenuEvents(minecraft);
         RecordingManager manager = RecordingManager.getInstance();
         while (toggleRecording.isPressed()) {
@@ -310,16 +319,63 @@ public final class RecordableClientEvents {
     @SubscribeEvent
     public void onDisconnected(
             FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
-        Minecraft.getMinecraft().addScheduledTask(new Runnable() {
+        requestSessionExit("Forge network disconnect");
+    }
+
+    /**
+     * Forge's network event can be delivered after the client has stopped
+     * accepting scheduled work. Handle it immediately when it already runs on
+     * Minecraft's thread, and marshal only the genuine network-thread case.
+     */
+    private void requestSessionExit(final String trigger) {
+        final Minecraft minecraft = Minecraft.getMinecraft();
+        Runnable task = new Runnable() {
             @Override
             public void run() {
+                RecordingManager manager =
+                        RecordingManager.getInstance();
+                if (manager.isRecording() || manager.isPaused()) {
+                    RecordableMod.LOGGER.info(
+                            "Recording lifecycle exit detected: {}.",
+                            trigger);
+                }
                 AutoClipManager.getInstance().reset();
                 ReplayCompatBridge.resetPlaybackState();
                 PerformanceMetrics.getInstance().reset();
                 PerformanceOptimizer.getInstance().reset();
                 autoRecordManager.onDisconnected();
             }
-        });
+        };
+        if (minecraft == null
+                || minecraft.isCallingFromMinecraftThread()) {
+            task.run();
+        } else {
+            minecraft.addScheduledTask(task);
+        }
+    }
+
+    /**
+     * A client-world unload is earlier and more deterministic than the network
+     * callback when returning to the title screen. The manager state makes
+     * duplicate Forge/world/menu notifications idempotent.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onWorldUnload(WorldEvent.Unload event) {
+        if (event.world == null || !event.world.isRemote) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft != null
+                && minecraft.theWorld != null
+                && minecraft.theWorld != event.world) {
+            return;
+        }
+        /*
+         * Forge posts Unload before Minecraft assigns the replacement world.
+         * Checking on the next client tick prevents a dimension/server-world
+         * replacement from looking like a trip to the title screen.
+         */
+        worldUnloadCheckPending = true;
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -374,6 +430,10 @@ public final class RecordableClientEvents {
             return;
         }
 
+        RecordingManager manager = RecordingManager.getInstance();
+        if (manager.isRecording() || manager.isPaused()) {
+            requestSessionExit("title screen");
+        }
         initializedMainMenu = event.gui;
         homeButton = null;
         RecordableConfig config = RecordableConfig.get();

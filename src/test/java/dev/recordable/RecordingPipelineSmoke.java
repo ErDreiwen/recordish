@@ -62,6 +62,7 @@ public final class RecordingPipelineSmoke {
         config.notifyReplayBuffer = false;
         config.notifyWarnings = false;
         config.sanitize();
+        verifyVideoFileClassification();
         verifyPcmPauseBoundaryClipping();
         verifySoftwareCodecCacheRefresh(
                 config,
@@ -123,6 +124,11 @@ public final class RecordingPipelineSmoke {
             throw new IllegalStateException(
                     "Final recording is missing or empty: " + output);
         }
+        if (!StorageManager.isCompleteVideoFile(output)) {
+            throw new IllegalStateException(
+                    "Final recording was not classified as playable: "
+                            + output);
+        }
         Path expectedAutoClipDirectory =
                 StorageManager.getAutoClipTriggerDirectory(
                         config,
@@ -147,6 +153,35 @@ public final class RecordingPipelineSmoke {
 
         Path replayOutput = runReplaySmoke(config);
         System.out.println("RECORDABLE_REPLAY_SMOKE_OK=" + replayOutput);
+    }
+
+    private static void verifyVideoFileClassification() {
+        assertVideoName("recordable-final.mp4", true);
+        assertVideoName("recordable-final.mkv", true);
+        assertVideoName("recordable-final-recovered.mkv", true);
+        assertVideoName("bedwars.part.1.mp4", true);
+        assertVideoName("bedwars.partial.edit.mp4", true);
+        assertVideoName("recordable-final.part.mp4", false);
+        assertVideoName("recordable-final.video.mkv", false);
+        assertVideoName("recordable-final.video-2.mkv", false);
+        assertVideoName("recordable-final_compressed.part.mp4", false);
+        assertVideoName("ffmpeg-download.partial", false);
+    }
+
+    private static void assertVideoName(
+            String filename,
+            boolean expected) {
+        boolean actual = StorageManager.isVideoFile(filename);
+        if (actual != expected) {
+            throw new IllegalStateException(
+                    "Unexpected video classification for "
+                            + filename
+                            + ": "
+                            + actual
+                            + " (expected "
+                            + expected
+                            + ")");
+        }
     }
 
     private static void verifyPcmPauseBoundaryClipping() {

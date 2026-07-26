@@ -2,10 +2,12 @@ package dev.recordable.screen;
 
 import dev.recordable.PlatformUtils;
 import dev.recordable.RecordableMod;
+import dev.recordable.StorageManager;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -49,6 +51,7 @@ public final class VideoPlayerScreen extends GuiScreen {
         int centerX = width / 2;
         int y = height / 2 + 20;
         androidRuntime = isAndroidRuntime();
+        boolean videoAvailable = isVideoAvailable();
 
         openVideoButton = new GuiButton(
                 BUTTON_OPEN,
@@ -59,7 +62,7 @@ public final class VideoPlayerScreen extends GuiScreen {
                 androidRuntime
                         ? "Open Video (Not available on Android)"
                         : "\u25B6 Open Video");
-        openVideoButton.enabled = !androidRuntime;
+        openVideoButton.enabled = !androidRuntime && videoAvailable;
         buttonList.add(openVideoButton);
 
         openFolderButton = new GuiButton(
@@ -81,6 +84,10 @@ public final class VideoPlayerScreen extends GuiScreen {
                 BUTTON_WIDTH,
                 BUTTON_HEIGHT,
                 "Back"));
+
+        if (!videoAvailable) {
+            markVideoMissing();
+        }
     }
 
     @Override
@@ -89,9 +96,17 @@ public final class VideoPlayerScreen extends GuiScreen {
             return;
         }
         if (button.id == BUTTON_OPEN) {
+            if (!isVideoAvailable()) {
+                markVideoMissing();
+                return;
+            }
             if (!PlatformUtils.open(videoFile.toPath())) {
-                errorMessage =
-                        "Failed to open video in the default player.";
+                if (isVideoAvailable()) {
+                    errorMessage =
+                            "Failed to open video in the default player.";
+                } else {
+                    markVideoMissing();
+                }
             } else {
                 errorMessage = null;
             }
@@ -106,6 +121,14 @@ public final class VideoPlayerScreen extends GuiScreen {
             }
         } else if (button.id == BUTTON_BACK) {
             onClose();
+        }
+    }
+
+    @Override
+    public void updateScreen() {
+        super.updateScreen();
+        if (!isVideoAvailable()) {
+            markVideoMissing();
         }
     }
 
@@ -188,6 +211,20 @@ public final class VideoPlayerScreen extends GuiScreen {
                 && mouseY >= button.yPosition
                 && mouseX < button.xPosition + button.width
                 && mouseY < button.yPosition + button.height;
+    }
+
+    private boolean isVideoAvailable() {
+        Path path = videoFile.toPath();
+        return Files.isRegularFile(path)
+                && StorageManager.isCompleteVideoFile(path);
+    }
+
+    private void markVideoMissing() {
+        if (openVideoButton != null) {
+            openVideoButton.enabled = false;
+        }
+        errorMessage =
+                "This recording is no longer available. Go back to refresh.";
     }
 
     private static boolean isAndroidRuntime() {

@@ -42,7 +42,9 @@ public final class RecordableMod {
                 @Override
                 public void run() {
                     try {
-                        RecordingManager.getInstance().shutdown();
+                        LOGGER.info(
+                                "JVM shutdown hook checking Record-able media.");
+                        RecordingManager.getInstance().emergencyShutdown();
                     } catch (Throwable throwable) {
                         LOGGER.error(
                             "Emergency recording shutdown failed.",

@@ -272,10 +272,60 @@ public final class StorageManager {
         String lower = name.toLowerCase(Locale.ROOT);
         for (String extension : VIDEO_EXTENSIONS) {
             if (lower.endsWith(extension)) {
-                return true;
+                String stem = lower.substring(
+                        0,
+                        lower.length() - extension.length());
+                return !isRecordingIntermediate(stem, extension);
             }
         }
         return false;
+    }
+
+    /**
+     * Returns whether the path is a non-empty, finalized video that can be
+     * exposed by Record-able's storage and gallery screens.
+     */
+    public static boolean isCompleteVideoFile(Path path) {
+        if (path == null
+                || !Files.isRegularFile(path)
+                || !isVideoFile(filename(path))) {
+            return false;
+        }
+        try {
+            return Files.size(path) > 0L;
+        } catch (IOException | SecurityException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isRecordingIntermediate(
+            String lowerStem,
+            String extension) {
+        if (lowerStem == null
+                || lowerStem.endsWith(".partial")
+                || lowerStem.endsWith(".part")) {
+            return true;
+        }
+        if (!".mkv".equals(extension)) {
+            return false;
+        }
+        if (lowerStem.endsWith(".video")) {
+            return true;
+        }
+        int numberedSuffix = lowerStem.lastIndexOf(".video-");
+        if (numberedSuffix < 0
+                || numberedSuffix + ".video-".length()
+                        >= lowerStem.length()) {
+            return false;
+        }
+        for (int index = numberedSuffix + ".video-".length();
+                index < lowerStem.length();
+                index++) {
+            if (!Character.isDigit(lowerStem.charAt(index))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static Path getAutoClipDirectory(RecordableConfig config) {
@@ -363,8 +413,7 @@ public final class StorageManager {
         try (Stream<Path> stream = recursive
                 ? Files.walk(directory)
                 : Files.list(directory)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(path -> isVideoFile(filename(path)))
+            stream.filter(StorageManager::isCompleteVideoFile)
                     .forEach(path -> {
                         String name = filename(path);
                         recordings.add(new StoredFile(

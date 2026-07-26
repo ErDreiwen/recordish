@@ -3,6 +3,7 @@ package dev.recordable;
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -215,9 +216,17 @@ public final class PlatformUtils {
     }
 
     public static boolean open(Path path) {
-        if (path == null) return false;
-        File file = path.toFile();
+        if (path == null) {
+            return false;
+        }
         try {
+            if (!Files.exists(path)) {
+                RecordableMod.LOGGER.warn(
+                        "Could not open missing path {}",
+                        path);
+                return false;
+            }
+            File file = path.toFile();
             if (Desktop.isDesktopSupported()) {
                 Desktop desktop = Desktop.getDesktop();
                 if (desktop.isSupported(Desktop.Action.OPEN)) {
@@ -234,8 +243,11 @@ public final class PlatformUtils {
                 process = new ProcessBuilder("xdg-open", file.getAbsolutePath()).start();
             }
             return process != null;
-        } catch (IOException | UnsupportedOperationException | SecurityException exception) {
-            RecordableMod.LOGGER.warn("Could not open {}", file, exception);
+        } catch (IOException
+                | IllegalArgumentException
+                | UnsupportedOperationException
+                | SecurityException exception) {
+            RecordableMod.LOGGER.warn("Could not open {}", path, exception);
             return false;
         }
     }

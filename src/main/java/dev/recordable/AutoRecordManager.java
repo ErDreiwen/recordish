@@ -40,11 +40,16 @@ public final class AutoRecordManager {
 
         RecordableConfig config = RecordableConfig.get();
         RecordingManager manager = RecordingManager.getInstance();
-        if (manager.isRecording()) {
+        if (manager.isRecording() || manager.isPaused()) {
             if (config.stopOnDisconnect) {
+                RecordableMod.LOGGER.info(
+                        "Auto-stopping recording due to world/session exit.");
                 manager.stopRecording(
                         RecordingManager.StopReason.DISCONNECT);
-            } else {
+            } else if (manager.isRecording()) {
+                RecordableMod.LOGGER.info(
+                        "Auto-pausing recording due to world/session exit "
+                                + "(stopOnDisconnect=false).");
                 manager.pauseRecording();
             }
         }

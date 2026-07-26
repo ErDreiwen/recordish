@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -43,10 +44,54 @@ public final class RecordingManager {
         CRITICAL
     }
 
+    /**
+     * Published under {@link #lock} at the same instant as {@link State#STOPPING}.
+     *
+     * <p>A thread is not a safe completion token: there is a short interval
+     * between changing state and starting the worker where {@code isAlive()}
+     * is false. Minecraft can enter JVM shutdown in exactly that interval.
+     * These latches exist before STOPPING becomes visible, so every shutdown
+     * path has something deterministic to await.</p>
+     */
+    private static final class FinalizationHandle {
+        private final StopReason reason;
+        private final FFmpegEncoder encoder;
+        private final AudioCaptureSession audio;
+        private final Path requestedOutput;
+        private final Path temporaryVideo;
+        private final CountDownLatch mediaSealed = new CountDownLatch(1);
+        private final CountDownLatch completed = new CountDownLatch(1);
+
+        private volatile Thread worker;
+        private volatile Path sealedVideo;
+        private volatile Throwable failure;
+
+        private FinalizationHandle(
+                StopReason reason,
+                FFmpegEncoder encoder,
+                AudioCaptureSession audio) {
+            this.reason = reason;
+            this.encoder = encoder;
+            this.audio = audio;
+            this.requestedOutput = encoder == null
+                    ? null
+                    : encoder.getRequestedOutput();
+            this.temporaryVideo = encoder == null
+                    ? null
+                    : encoder.getTemporaryVideo();
+        }
+    }
+
     private static final RecordingManager INSTANCE = new RecordingManager();
     private static final long DISK_CHECK_INTERVAL_NANOS = 5_000_000_000L;
-    private static final long SHUTDOWN_FINALIZER_TIMEOUT_MILLIS = 45_000L;
-    private static final long SHUTDOWN_INTERRUPT_GRACE_MILLIS = 2_000L;
+    /*
+     * FFmpegEncoder itself permits up to 120 seconds to drain queued frames
+     * and another 120 seconds to write the Matroska trailer. Do not cut a
+     * healthy seal operation off at the old outer 45-second limit.
+     */
+    private static final long SHUTDOWN_MEDIA_SEAL_TIMEOUT_MILLIS = 270_000L;
+    private static final long SHUTDOWN_MUX_TIMEOUT_MILLIS = 120_000L;
+    private static final long SHUTDOWN_INTERRUPT_GRACE_MILLIS = 10_000L;
     private static final long SHUTDOWN_REPLAY_TIMEOUT_MILLIS = 15_000L;
     private static final int CAPTURE_SOURCE_SWITCHES_TO_EXHAUST = 3;
     private static final int BLACK_CONFIRMATION_FRAMES = 15;
@@ -66,7 +111,7 @@ public final class RecordingManager {
     private ScreenCapture replayScreenCapture;
     private FFmpegEncoder encoder;
     private AudioCaptureSession audioSession;
-    private volatile Thread finalizerThread;
+    private volatile FinalizationHandle activeFinalization;
     private Path currentOutputFile;
     private Path lastOutputFile;
     private long startedAtNanos;
@@ -742,11 +787,21 @@ public final class RecordingManager {
     }
 
     public void stopRecording(StopReason reason) {
+        stopRecording(reason, true);
+    }
+
+    private void stopRecording(
+            StopReason requestedReason,
+            boolean closeRenderResources) {
         final FFmpegEncoder finishingEncoder;
         final AudioCaptureSession finishingAudio;
         final ScreenCapture finishingCapture;
         final List<RecordingBookmark> finishingBookmarks;
         final long duration;
+        final StopReason reason = requestedReason == null
+                ? StopReason.MANUAL
+                : requestedReason;
+        final FinalizationHandle finalization;
 
         synchronized (lock) {
             if (state != State.RECORDING
@@ -765,12 +820,28 @@ public final class RecordingManager {
             finishingAudio = audioSession;
             finishingCapture = screenCapture;
             finishingBookmarks = snapshotBookmarks();
+            finalization = new FinalizationHandle(
+                    reason,
+                    finishingEncoder,
+                    finishingAudio);
+            activeFinalization = finalization;
             screenCapture = null;
             microphoneActive = false;
         }
 
+        RecordableMod.LOGGER.info(
+                "Recording stop requested: reason={} requestedOutput={} "
+                        + "temporaryVideo={} capturedFrames={} droppedFrames={} "
+                        + "failedCaptures={}",
+                reason,
+                finalization.requestedOutput,
+                finalization.temporaryVideo,
+                Long.valueOf(capturedFrames.get()),
+                Long.valueOf(getDroppedFrames()),
+                Long.valueOf(failedCaptures.get()));
+
         // PBOs must be released on the client/render thread.
-        if (finishingCapture != null) {
+        if (finishingCapture != null && closeRenderResources) {
             try {
                 finishingCapture.close();
             } catch (Throwable closeFailure) {
@@ -778,55 +849,105 @@ public final class RecordingManager {
                         "Unable to close screen capture cleanly.",
                         closeFailure);
             }
+        } else if (finishingCapture != null) {
+            RecordableMod.LOGGER.info(
+                    "Emergency shutdown is leaving screen-capture OpenGL "
+                            + "objects for JVM teardown.");
         }
 
-        RecordableMessages.send(
-                ChatCategory.RECORDING,
-                "Finalizing recording...");
+        if (closeRenderResources) {
+            RecordableMessages.send(
+                    ChatCategory.RECORDING,
+                    "Finalizing recording...");
+        }
 
         Thread finalizer = new Thread(new Runnable() {
             @Override
             public void run() {
-                try {
-                    finalizeRecording(
-                            finishingEncoder,
-                            finishingAudio,
-                            finishingBookmarks,
-                            duration,
-                            reason == null ? StopReason.MANUAL : reason);
-                } finally {
-                    if (finalizerThread == Thread.currentThread()) {
-                        finalizerThread = null;
-                    }
-                }
+                runFinalization(
+                        finalization,
+                        finishingBookmarks,
+                        duration);
             }
         }, "Recordable-Finalizer");
         // Non-daemon on purpose: a normal game shutdown should not abandon an
         // otherwise recoverable FFmpeg stream halfway through its trailer.
         finalizer.setDaemon(false);
-        finalizerThread = finalizer;
-        finalizer.start();
+        finalization.worker = finalizer;
+        try {
+            finalizer.start();
+        } catch (Throwable startFailure) {
+            RecordableMod.LOGGER.error(
+                    "Could not start the recording finalizer thread; "
+                            + "finalizing on the caller thread.",
+                    startFailure);
+            finalization.worker = Thread.currentThread();
+            runFinalization(
+                    finalization,
+                    finishingBookmarks,
+                    duration);
+        }
+    }
+
+    private void runFinalization(
+            FinalizationHandle finalization,
+            List<RecordingBookmark> finishingBookmarks,
+            long duration) {
+        try {
+            finalizeRecording(
+                    finalization,
+                    finishingBookmarks,
+                    duration);
+        } finally {
+            // A failure before finishVideo() must still release shutdown's
+            // phase-A waiter.
+            finalization.mediaSealed.countDown();
+            finalization.completed.countDown();
+            synchronized (lock) {
+                if (activeFinalization == finalization) {
+                    activeFinalization = null;
+                }
+            }
+        }
     }
 
     private void finalizeRecording(
-            FFmpegEncoder finishingEncoder,
-            AudioCaptureSession finishingAudio,
+            FinalizationHandle finalization,
             List<RecordingBookmark> finishingBookmarks,
-            long duration,
-            StopReason reason) {
+            long duration) {
+        FFmpegEncoder finishingEncoder = finalization.encoder;
+        AudioCaptureSession finishingAudio = finalization.audio;
+        StopReason reason = finalization.reason;
         Path finalized = null;
         Throwable failure = null;
+        List<AudioCaptureSession.AudioTrack> audioTracks =
+                Collections.<AudioCaptureSession.AudioTrack>emptyList();
+        RecordableMod.LOGGER.info(
+                "Recording finalizer started: reason={} requestedOutput={} "
+                        + "temporaryVideo={}",
+                reason,
+                finalization.requestedOutput,
+                finalization.temporaryVideo);
         try {
-            List<AudioCaptureSession.AudioTrack> audioTracks =
-                    finishingAudio == null
-                            ? Collections
-                                    .<AudioCaptureSession.AudioTrack>emptyList()
-                            : finishingAudio.finish();
+            audioTracks = finishingAudio == null
+                    ? Collections
+                            .<AudioCaptureSession.AudioTrack>emptyList()
+                    : finishingAudio.finish();
             if (finishingEncoder == null) {
                 throw new IOException(
                         "The video encoder was unavailable while stopping.");
             }
             Path temporaryVideo = finishingEncoder.finishVideo();
+            finalization.sealedVideo = temporaryVideo;
+            finalization.mediaSealed.countDown();
+            RecordableMod.LOGGER.info(
+                    "Recording media sealed: reason={} temporaryVideo={} "
+                            + "bytes={} audioTracks={} rawAudio={}",
+                    reason,
+                    temporaryVideo,
+                    Long.valueOf(safeFileSize(temporaryVideo)),
+                    Integer.valueOf(audioTracks.size()),
+                    audioTrackPaths(audioTracks));
             finalized = RecordingFinalizer.finalizeRecording(
                     temporaryVideo,
                     finishingEncoder.getRequestedOutput(),
@@ -851,17 +972,33 @@ public final class RecordingManager {
             }
         } catch (Throwable throwable) {
             failure = throwable;
-            if (finishingAudio != null) finishingAudio.abort();
+            finalization.failure = throwable;
+            if (finishingAudio != null) {
+                finishingAudio.preserveRawOutputs();
+                finishingAudio.abort();
+            }
             if (finishingEncoder != null) {
                 finishingEncoder.abort();
             }
+            if (finalized == null) {
+                finalized = RecordingFinalizer.publishRecoverableVideo(
+                        finalization.sealedVideo,
+                        finalization.requestedOutput);
+            }
             RecordableMod.LOGGER.error(
-                    "Unable to finalize recording.",
+                    "Unable to finalize recording normally. reason={} "
+                            + "requestedOutput={} temporaryVideo={} "
+                            + "recoveredOutput={}",
+                    reason,
+                    finalization.requestedOutput,
+                    finalization.temporaryVideo,
+                    finalized,
                     throwable);
         }
 
         final Path result = finalized;
         final Throwable resultFailure = failure;
+        final boolean recoveryResult = isRecoveryVideo(result);
         synchronized (lock) {
             encoder = null;
             audioSession = null;
@@ -869,6 +1006,32 @@ public final class RecordingManager {
             if (result != null) lastOutputFile = result;
             lastFailure = resultFailure;
             state = State.IDLE;
+        }
+
+        if (resultFailure == null && result != null) {
+            RecordableMod.LOGGER.info(
+                    "Recording finalization completed: reason={} output={} "
+                            + "bytes={} durationMs={}",
+                    reason,
+                    result,
+                    Long.valueOf(safeFileSize(result)),
+                    Long.valueOf(duration));
+        } else if (recoveryResult) {
+            RecordableMod.LOGGER.warn(
+                    "Recording finalization fell back to a playable recovery "
+                            + "file: reason={} output={} bytes={} cause={}",
+                    reason,
+                    result,
+                    Long.valueOf(safeFileSize(result)),
+                    safeMessage(resultFailure));
+        } else if (result != null) {
+            RecordableMod.LOGGER.warn(
+                    "Recording output was saved, but optional post-processing "
+                            + "failed: reason={} output={} bytes={} cause={}",
+                    reason,
+                    result,
+                    Long.valueOf(safeFileSize(result)),
+                    safeMessage(resultFailure));
         }
 
         Minecraft minecraft = Minecraft.getMinecraft();
@@ -883,6 +1046,18 @@ public final class RecordingManager {
                                 "Saved recording: "
                                         + result.getFileName());
                     }
+                } else if (recoveryResult) {
+                    RecordableMessages.send(
+                            ChatCategory.WARNINGS,
+                            "Final MP4 mux failed, but a playable recovery "
+                                    + "video was saved: "
+                                    + result.getFileName());
+                } else if (result != null) {
+                    RecordableMessages.send(
+                            ChatCategory.WARNINGS,
+                            "Recording saved, but optional post-processing "
+                                    + "failed: "
+                                    + result.getFileName());
                 } else {
                     RecordableMessages.error(
                             "Recording finalization failed: "
@@ -938,80 +1113,146 @@ public final class RecordingManager {
     }
 
     public void shutdown() {
-        stopRecording(StopReason.SHUTDOWN);
-        awaitFinalizer();
-        closeReplayCapture();
-        ReplayBuffer.getInstance().shutdownAndAwait(
-                SHUTDOWN_REPLAY_TIMEOUT_MILLIS);
-        RecordableConfig.get().save();
+        shutdown(true);
     }
 
     /**
-     * Minecraft 1.8.9 exits the JVM directly from its shutdown path. Give the
-     * finalizer time to write the FFmpeg trailer and audio mux, but do not let
-     * a wedged child process hold shutdown forever.
+     * Begins the normal render-thread shutdown without blocking Minecraft's
+     * own quit method before it can set {@code running=false}. The later
+     * applet shutdown hook performs the bounded wait.
+     */
+    public void requestShutdown() {
+        RecordableMod.LOGGER.info(
+                "Recording shutdown requested: state={}",
+                state);
+        stopRecording(StopReason.SHUTDOWN, true);
+    }
+
+    /**
+     * Last-resort JVM-hook path. The Minecraft render context may already be
+     * gone, so it seals media without attempting PBO/OpenGL cleanup.
+     */
+    public void emergencyShutdown() {
+        shutdown(false);
+    }
+
+    private void shutdown(boolean closeRenderResources) {
+        RecordableMod.LOGGER.info(
+                "Recording shutdown entered: state={} renderCleanup={}",
+                state,
+                Boolean.valueOf(closeRenderResources));
+        stopRecording(StopReason.SHUTDOWN, closeRenderResources);
+        awaitFinalizer();
+        if (closeRenderResources) {
+            closeReplayCapture();
+        }
+        ReplayBuffer.getInstance().shutdownAndAwait(
+                SHUTDOWN_REPLAY_TIMEOUT_MILLIS);
+        RecordableConfig.get().save();
+        RecordableMod.LOGGER.info(
+                "Recording shutdown completed: state={} activeFinalizer={}",
+                state,
+                Boolean.valueOf(activeFinalization != null));
+    }
+
+    /**
+     * Waits in two stages. The first stage is the data-safety boundary: once
+     * FFmpeg has written and verified the Matroska trailer, a playable video
+     * exists even if the requested MP4/audio mux cannot finish. The second
+     * stage waits for the normal final container.
      */
     private void awaitFinalizer() {
-        Thread pending = finalizerThread;
-        if (pending == null || pending == Thread.currentThread()) return;
+        FinalizationHandle pending = activeFinalization;
+        if (pending == null || pending.worker == Thread.currentThread()) {
+            return;
+        }
+
+        RecordableMod.LOGGER.info(
+                "Awaiting recording media seal during shutdown: reason={} "
+                        + "temporaryVideo={} timeoutSeconds={}",
+                pending.reason,
+                pending.temporaryVideo,
+                Long.valueOf(
+                        SHUTDOWN_MEDIA_SEAL_TIMEOUT_MILLIS / 1000L));
 
         boolean interrupted = false;
-        long deadline = System.nanoTime()
-                + TimeUnit.MILLISECONDS.toNanos(
-                        SHUTDOWN_FINALIZER_TIMEOUT_MILLIS);
-        while (pending.isAlive()) {
-            long remainingNanos = deadline - System.nanoTime();
-            if (remainingNanos <= 0L) break;
+        boolean sealedSignal = false;
+        try {
+            sealedSignal = pending.mediaSealed.await(
+                    SHUTDOWN_MEDIA_SEAL_TIMEOUT_MILLIS,
+                    TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            interrupted = true;
+        }
+
+        if (!sealedSignal) {
+            interruptFinalization(
+                    pending,
+                    "media seal",
+                    true);
+        } else if (pending.completed.getCount() > 0L) {
+            RecordableMod.LOGGER.info(
+                    "Recording media seal finished; awaiting final mux: "
+                            + "sealedVideo={} timeoutSeconds={}",
+                    pending.sealedVideo,
+                    Long.valueOf(SHUTDOWN_MUX_TIMEOUT_MILLIS / 1000L));
+            boolean completed = false;
             try {
-                long remainingMillis = Math.max(
-                        1L,
-                        TimeUnit.NANOSECONDS.toMillis(remainingNanos));
-                pending.join(remainingMillis);
+                completed = pending.completed.await(
+                        SHUTDOWN_MUX_TIMEOUT_MILLIS,
+                        TimeUnit.MILLISECONDS);
             } catch (InterruptedException exception) {
                 interrupted = true;
-                break;
+            }
+            if (!completed) {
+                interruptFinalization(
+                        pending,
+                        "final mux",
+                        false);
             }
         }
 
-        if (pending.isAlive()) {
-            FFmpegEncoder activeEncoder;
-            AudioCaptureSession activeAudio;
-            synchronized (lock) {
-                activeEncoder = encoder;
-                activeAudio = audioSession;
-            }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
-            if (activeAudio != null) {
-                activeAudio.preserveRawOutputs();
-            }
-            Path temporaryVideo = activeEncoder == null
-                    ? null
-                    : activeEncoder.getTemporaryVideo();
+    private void interruptFinalization(
+            FinalizationHandle pending,
+            String stage,
+            boolean abortEncoder) {
+        if (pending.audio != null) {
+            pending.audio.preserveRawOutputs();
+        }
+        RecordableMod.LOGGER.error(
+                "Recording {} exceeded its shutdown limit. Interrupting "
+                        + "finalization while preserving recoverable media: "
+                        + "requestedOutput={} temporaryVideo={} sealedVideo={}",
+                stage,
+                pending.requestedOutput,
+                pending.temporaryVideo,
+                pending.sealedVideo);
+
+        Thread worker = pending.worker;
+        if (worker != null && worker != Thread.currentThread()) {
+            worker.interrupt();
+        }
+        if (abortEncoder && pending.encoder != null) {
+            pending.encoder.forceAbort();
+        }
+        try {
+            pending.completed.await(
+                    SHUTDOWN_INTERRUPT_GRACE_MILLIS,
+                    TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+        if (pending.completed.getCount() > 0L) {
             RecordableMod.LOGGER.error(
-                    "Recording finalization exceeded the {} second shutdown "
-                            + "limit. Interrupting it; temporary media will be "
-                            + "preserved{}.",
-                    SHUTDOWN_FINALIZER_TIMEOUT_MILLIS / 1000L,
-                    temporaryVideo == null
-                            ? ""
-                            : " at " + temporaryVideo.toAbsolutePath());
-
-            pending.interrupt();
-            if (activeEncoder != null) {
-                activeEncoder.forceAbort();
-            }
-            try {
-                pending.join(SHUTDOWN_INTERRUPT_GRACE_MILLIS);
-            } catch (InterruptedException exception) {
-                interrupted = true;
-            }
-            if (pending.isAlive()) {
-                RecordableMod.LOGGER.error(
-                        "The recording finalizer did not stop after being "
-                                + "interrupted. JVM shutdown will now continue.");
-            }
+                    "The recording finalizer did not stop after interruption. "
+                            + "JVM shutdown will continue; recovery paths are "
+                            + "listed above.");
         }
-        if (interrupted) Thread.currentThread().interrupt();
     }
 
     public State getState() {
@@ -1261,6 +1502,45 @@ public final class RecordingManager {
             return String.format(Locale.ROOT, "%.1f MiB", mib);
         }
         return String.format(Locale.ROOT, "%.2f GiB", mib / 1024.0D);
+    }
+
+    private static long safeFileSize(Path path) {
+        try {
+            return path != null && Files.isRegularFile(path)
+                    ? Files.size(path)
+                    : 0L;
+        } catch (IOException | SecurityException ignored) {
+            return 0L;
+        }
+    }
+
+    private static boolean isRecoveryVideo(Path path) {
+        if (path == null || path.getFileName() == null) {
+            return false;
+        }
+        String name = path.getFileName().toString()
+                .toLowerCase(Locale.ROOT);
+        return name.endsWith(".mkv")
+                && (name.contains("-recovered.mkv")
+                    || name.matches(".*-recovered-\\d+\\.mkv"));
+    }
+
+    private static String audioTrackPaths(
+            List<AudioCaptureSession.AudioTrack> tracks) {
+        if (tracks == null || tracks.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder paths = new StringBuilder("[");
+        for (AudioCaptureSession.AudioTrack track : tracks) {
+            if (track == null || track.getPath() == null) {
+                continue;
+            }
+            if (paths.length() > 1) {
+                paths.append(", ");
+            }
+            paths.append(track.getPath().toAbsolutePath());
+        }
+        return paths.append(']').toString();
     }
 
     private static long parseBitrateBits(String value) {

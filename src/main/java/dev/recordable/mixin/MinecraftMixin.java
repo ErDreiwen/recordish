@@ -43,9 +43,30 @@ public abstract class MinecraftMixin {
         }
     }
 
+    /**
+     * Called as soon as the window/quit button requests exit, while the render
+     * context and normal client lifecycle are still intact.
+     */
+    @Inject(method = "shutdown", at = @At("HEAD"))
+    private void recordable$finishWhenExitRequested(
+            CallbackInfo callbackInfo) {
+        try {
+            RecordableMod.LOGGER.info(
+                    "Minecraft quit requested; finalizing Record-able media.");
+            RecordingManager.getInstance().requestShutdown();
+        } catch (Throwable throwable) {
+            RecordableMod.LOGGER.error(
+                    "Unable to complete the early recording shutdown hook.",
+                    throwable);
+        }
+    }
+
     @Inject(method = "shutdownMinecraftApplet", at = @At("HEAD"))
     private void recordable$finishBeforeShutdown(CallbackInfo callbackInfo) {
         try {
+            RecordableMod.LOGGER.info(
+                    "Minecraft applet shutdown reached; checking Record-able "
+                            + "finalization.");
             RecordingManager.getInstance().shutdown();
         } catch (Throwable throwable) {
             RecordableMod.LOGGER.error(

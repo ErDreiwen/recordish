@@ -146,6 +146,75 @@ public final class RecordingFinalizer {
         return requestedOutput;
     }
 
+    /**
+     * Publishes a trailer-complete Matroska stream when the requested
+     * container/audio mux cannot finish. This turns a hidden
+     * {@code *.video.mkv} intermediate into a visible, playable recovery file
+     * instead of making a shutdown failure look like total data loss.
+     */
+    public static Path publishRecoverableVideo(
+            Path sealedVideo,
+            Path requestedOutput) {
+        try {
+            if (requestedOutput != null
+                    && Files.isRegularFile(requestedOutput)
+                    && Files.size(requestedOutput) > 0L) {
+                return requestedOutput;
+            }
+            if (sealedVideo == null
+                    || !Files.isRegularFile(sealedVideo)
+                    || Files.size(sealedVideo) <= 0L) {
+                return null;
+            }
+
+            if (requestedOutput != null) {
+                Path incomplete = requestedOutput.resolveSibling(
+                        stem(requestedOutput)
+                                + ".part"
+                                + extension(requestedOutput));
+                try {
+                    Files.deleteIfExists(incomplete);
+                } catch (IOException cleanupFailure) {
+                    RecordableMod.LOGGER.debug(
+                            "Unable to remove incomplete finalization output {}.",
+                            incomplete,
+                            cleanupFailure);
+                }
+            }
+
+            Path directory = requestedOutput != null
+                    && requestedOutput.toAbsolutePath().getParent() != null
+                            ? requestedOutput.toAbsolutePath().getParent()
+                            : sealedVideo.toAbsolutePath().getParent();
+            if (directory == null) {
+                return sealedVideo;
+            }
+            Files.createDirectories(directory);
+            String baseName = requestedOutput == null
+                    ? stem(sealedVideo)
+                    : stem(requestedOutput);
+            Path recovery = directory.resolve(
+                    baseName + "-recovered.mkv");
+            int suffix = 1;
+            while (Files.exists(recovery)) {
+                recovery = directory.resolve(
+                        baseName + "-recovered-" + suffix++ + ".mkv");
+            }
+            moveSafely(sealedVideo, recovery);
+            RecordableMod.LOGGER.warn(
+                    "Published playable recovery video at {}.",
+                    recovery);
+            return recovery;
+        } catch (IOException recoveryFailure) {
+            RecordableMod.LOGGER.error(
+                    "Unable to publish the sealed recovery video. It remains "
+                            + "at {}.",
+                    sealedVideo,
+                    recoveryFailure);
+            return sealedVideo;
+        }
+    }
+
     private static void addAudioArguments(
             List<String> arguments,
             List<AudioCaptureSession.AudioTrack> tracks,
