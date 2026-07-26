@@ -26,7 +26,7 @@ export function WindowShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="window-content">{children}</div>
         <div className="status-bar" aria-hidden="true">
-          <span>Ready</span>
+          <span>Sorted.</span>
           <span>Unofficial Forge 1.8.9 port</span>
         </div>
       </div>

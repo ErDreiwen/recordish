@@ -41,8 +41,8 @@ const CATEGORIES: {
   label: string;
   short: string;
 }[] = [
-  { value: "bug", label: "Bug", short: "Something broke" },
-  { value: "ui", label: "UI / usability", short: "Hard to use or understand" },
+  { value: "bug", label: "Bug", short: "Something is properly broken" },
+  { value: "ui", label: "UI / usability", short: "Looks daft or fights you" },
   {
     value: "recording",
     label: "Recording / output",
@@ -51,27 +51,27 @@ const CATEGORIES: {
   {
     value: "ffmpeg",
     label: "FFmpeg / install",
-    short: "Setup, path, or encoder",
+    short: "Setup, path, or encoder grief",
   },
   {
     value: "launcher",
     label: "Launcher compatibility",
-    short: "Prism, Lunar, or another launcher",
+    short: "Prism, Lunar, or something odd",
   },
-  { value: "docs", label: "Docs", short: "Missing or unclear guidance" },
-  { value: "feature", label: "Feature request", short: "A focused improvement" },
-  { value: "other", label: "Other / unsure", short: "We will help sort it" },
+  { value: "docs", label: "Docs", short: "The guide is missing or muddy" },
+  { value: "feature", label: "Feature request", short: "One sensible improvement" },
+  { value: "other", label: "Other / unsure", short: "No clue where it belongs" },
 ];
 
 const CATEGORY_HINTS: Record<Category, string> = {
-  bug: "Tell us the shortest repeatable path to the failure.",
-  ui: "Name the screen, control, wording, or flow that caused friction.",
+  bug: "Give the shortest repeatable route to the failure. “It broke” is not a route.",
+  ui: "Name the screen, control, or wording that made you stop and squint.",
   recording: "Include the output format and whether video, game audio, or microphone audio was affected.",
-  ffmpeg: "Include the FFmpeg test result or exact install error when possible.",
-  launcher: "Say which launcher profile you used. Lunar must use Vanilla/Forge.",
-  docs: "Link or name the section and explain what you expected to learn.",
-  feature: "Describe the problem the feature solves, not only the proposed control.",
-  other: "Share what you were trying to do and where you became stuck.",
+  ffmpeg: "Run Test FFmpeg and include the result. Believe the test, not vibes.",
+  launcher: "Name the exact launcher profile. Lunar means Vanilla/Forge.",
+  docs: "Name the muddy bit and what you expected it to explain.",
+  feature: "Tell us what problem it solves. Another button needs a reason.",
+  other: "Say what you tried, where you got stuck, and what you expected.",
 };
 
 const initialReport: ReportState = {
@@ -182,7 +182,7 @@ function slugFor(value: string) {
 export function ReportBuilder() {
   const [report, setReport] = useState<ReportState>(initialReport);
   const [actionStatus, setActionStatus] = useState(
-    "Your draft stays in this tab.",
+    "Your draft stays in this tab. Nothing has been sent.",
   );
 
   const markdown = useMemo(() => markdownFor(report), [report]);
@@ -229,14 +229,14 @@ export function ReportBuilder() {
   async function copyReport() {
     if (!report.privacyChecked) {
       setActionStatus(
-        "Review the privacy notice and check the box before copying.",
+        "Tick the privacy box first. We are not helping you leak your own secrets.",
       );
       return;
     }
 
     try {
       await navigator.clipboard.writeText(markdown);
-      setActionStatus("Report copied. You can paste it into Discord.");
+      setActionStatus("Copied. Lob it into Discord when you are ready.");
     } catch {
       const textArea = document.createElement("textarea");
       textArea.value = markdown;
@@ -249,8 +249,8 @@ export function ReportBuilder() {
       textArea.remove();
       setActionStatus(
         copied
-          ? "Report copied. You can paste it into Discord."
-          : "Copy was blocked. Select the preview text and copy it manually.",
+          ? "Copied. Lob it into Discord when you are ready."
+          : "Clipboard blocked it. Select the preview and copy it manually.",
       );
     }
   }
@@ -258,7 +258,7 @@ export function ReportBuilder() {
   function downloadReport() {
     if (!report.privacyChecked) {
       setActionStatus(
-        "Review the privacy notice and check the box before downloading.",
+        "Tick the privacy box first. We are not helping you leak your own secrets.",
       );
       return;
     }
@@ -272,12 +272,12 @@ export function ReportBuilder() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    setActionStatus("Markdown report downloaded.");
+    setActionStatus("Saved as Markdown.");
   }
 
   function resetReport() {
     setReport(initialReport);
-    setActionStatus("Draft cleared. Nothing was submitted.");
+    setActionStatus("Draft binned. Nothing was submitted.");
   }
 
   return (
@@ -286,7 +286,7 @@ export function ReportBuilder() {
         <div className="report-section-heading">
           <div>
             <p className="section-number">01 / DESCRIBE</p>
-            <h2 id="report-form-title">What needs attention?</h2>
+            <h2 id="report-form-title">What needs sorting?</h2>
           </div>
           <div className="completeness">
             <label htmlFor="report-completeness">
@@ -304,7 +304,7 @@ export function ReportBuilder() {
         </div>
 
         <fieldset className="category-fieldset">
-          <legend>Which project is this about?</legend>
+          <legend>Which thing are you actually using?</legend>
           <div className="project-choice">
             <label
               className={
@@ -350,7 +350,7 @@ export function ReportBuilder() {
         </fieldset>
 
         <fieldset className="category-fieldset report-category-fieldset">
-          <legend>Choose the closest area</legend>
+          <legend>What has gone wrong? Do not overthink it.</legend>
           <div className="category-grid">
             {CATEGORIES.map((item) => (
               <label
@@ -387,7 +387,7 @@ export function ReportBuilder() {
             <input
               maxLength={100}
               onChange={(event) => setField("summary", event.target.value)}
-              placeholder="Example: FFmpeg download stops at 80%"
+              placeholder="Example: FFmpeg download gives up at 80%"
               required
               value={report.summary}
             />
@@ -426,7 +426,7 @@ export function ReportBuilder() {
             </span>
             <textarea
               onChange={(event) => setField("actual", event.target.value)}
-              placeholder="Include exact error text when possible."
+              placeholder="What did it do instead? Include the exact error if there is one."
               required
               rows={4}
               value={report.actual}
@@ -438,7 +438,7 @@ export function ReportBuilder() {
           <summary>
             <span>
               <strong>02 / ENVIRONMENT</strong>
-              <small>Versions and launch setup</small>
+              <small>Versions, launcher, and the usual suspects</small>
             </span>
           </summary>
           <div className="environment-grid">
@@ -601,18 +601,10 @@ export function ReportBuilder() {
           <summary>
             <span>
               <strong>03 / LOGS</strong>
-              <small>Optional, but often decisive</small>
+              <small>Optional, unless it contains the answer</small>
             </span>
           </summary>
           <div className="logs-content">
-            <div className="privacy-warning" role="note">
-              <strong>Privacy check</strong>
-              <p>
-                Logs can contain usernames, server addresses, chat, folder
-                names, or access tokens. Remove anything you do not want shared.
-                Never paste passwords.
-              </p>
-            </div>
             <label className="field">
               <span>Relevant log excerpt</span>
               <textarea
@@ -623,27 +615,36 @@ export function ReportBuilder() {
                 value={report.logs}
               />
             </label>
-            <label className="privacy-check">
-              <input
-                checked={report.privacyChecked}
-                onChange={(event) =>
-                  setField("privacyChecked", event.target.checked)
-                }
-                type="checkbox"
-              />
-              <span>
-                I reviewed this report and removed private information.
-              </span>
-            </label>
           </div>
         </details>
+
+        <div className="privacy-gate">
+          <div className="privacy-warning" role="note">
+            <strong>Privacy. Yes, it matters.</strong>
+            <p>
+              Logs can expose usernames, server addresses, chat, folder names,
+              or access tokens. Strip that out. Never paste a password. We are
+              not that desperate.
+            </p>
+          </div>
+          <label className="privacy-check">
+            <input
+              checked={report.privacyChecked}
+              onChange={(event) =>
+                setField("privacyChecked", event.target.checked)
+              }
+              type="checkbox"
+            />
+            <span>I reviewed this report and removed private information.</span>
+          </label>
+        </div>
       </section>
 
       <aside className="report-output" aria-labelledby="preview-title">
         <div className="output-heading">
           <div>
             <p className="section-number">LIVE PREVIEW</p>
-            <h2 id="preview-title">Markdown report</h2>
+            <h2 id="preview-title">Your tidy little report</h2>
           </div>
           <span className="draft-badge">NOT SENT</span>
         </div>
@@ -674,34 +675,34 @@ export function ReportBuilder() {
             onClick={downloadReport}
             type="button"
           >
-            Download .md
+            Save .md
           </button>
           <button className="text-button" onClick={resetReport} type="button">
-            Clear draft
+            Bin draft
           </button>
         </div>
         <p className="share-help" id="share-help">
-          Review the privacy notice and check its box to enable copying or
-          downloading.
+          Tick the privacy box first. We are not helping you leak your own
+          stuff.
         </p>
         <p className="action-status" aria-live="polite">
           {actionStatus}
         </p>
 
         <div className="handoff-card">
-          <p className="eyebrow">Where does it go?</p>
-          <h3>Bring it to the official Discord.</h3>
+          <p className="eyebrow">Right, where now?</p>
+          <h3>Take it to Discord for now.</h3>
           {report.project === "community" ? (
             <p>
               The Community port&apos;s public issue tracker is not live yet.
-              Copy or download the report, then share it in the official
-              Record-able Discord. This page never sends data by itself.
+              Copy or save the report, then take it to the official Record-able
+              Discord. It will not send itself, and this page uploads nothing.
             </p>
           ) : (
             <p>
               For the original Fabric mod, use the official Record-able Discord
               or Modrinth page. The upstream GitHub currently restricts new
-              issue creation. This page never sends data by itself.
+              issue creation. This page uploads nothing.
             </p>
           )}
           <div className="handoff-links">

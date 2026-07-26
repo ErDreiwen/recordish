@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     absolute: "Recordable Community — Unofficial Forge 1.8.9 Port",
   },
   description:
-    "An unofficial community Forge 1.8.9 port of Record-able, the Minecraft recording mod by Minewind's Jo Eusebe.",
+    "The unofficial Forge 1.8.9 community port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.",
 };
 
 export default function Home() {
@@ -22,38 +22,40 @@ export default function Home() {
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="issue-line">
-              UNOFFICIAL / FORGE 1.8.9 COMMUNITY PORT
+              MANC ATTITUDE / UNOFFICIAL / FORGE 1.8.9
             </p>
             <div className="brand-lockup">
               <h1 id="hero-title">Recordable</h1>
               <span className="brand-tag">Community</span>
             </div>
             <p className="hero-tagline">
-              Record Minecraft. Keep the good parts.
+              Record Minecraft. Keep the good bits.
             </p>
             <p className="standfirst">
-              Video, game audio, instant replays, and automatic clips—captured
-              inside Minecraft.
+              Video, game audio, instant replays, and automatic clips. All
+              in-game. No bloated nonsense.
             </p>
 
             <div className="hero-actions" aria-label="Primary actions">
               <a className="button button-primary" href={DOWNLOAD_PATH} download>
-                Download .jar
+                Get the JAR
               </a>
               <Link className="button" href="/docs">
-                Read the docs
+                Read this first
               </Link>
             </div>
             <p className="release-note">
-              Unofficial community port · version 1.0.0
+              Unofficial. Community-built. Not pretending otherwise. · v1.0.0
             </p>
+            <p className="manc-stamp">MCR ATTITUDE / ZERO CORPORATE WAFFLE</p>
           </div>
 
           <aside className="cover-note" aria-label="Release summary">
-            <p className="cover-kicker">The BedWars edition</p>
+            <p className="cover-kicker">The BedWars build</p>
             <p className="cover-number">1.8.9</p>
             <p>
-              A faithful desktop port for the version people still play.
+              For the 1.8.9 diehards who are not binning their whole setup for
+              a recorder.
             </p>
           </aside>
         </section>
@@ -78,47 +80,47 @@ export default function Home() {
             <p className="section-number">01</p>
             <h2>The original</h2>
             <p>
-              Record-able is the MIT-licensed Minecraft recorder created by
-              Minewind&apos;s Jo Eusebe. Its official releases live on
-              Modrinth and the original source repository.
+              Minewind&apos;s Jo Eusebe built the original Record-able and
+              released it under MIT. Credit goes there. Official builds stay
+              on Modrinth and the original repository. Dead simple.
             </p>
           </article>
           <article>
             <p className="section-number">02</p>
             <h2>The Community port</h2>
             <p>
-              Recordable Community independently adapts that experience to
-              Minecraft 1.8.9 on Forge. It is maintained by ErDreiwen and is
-              not an official release or endorsement from the original author.
+              We dragged that desktop experience back to Forge 1.8.9 because
+              BedWars players still live here. Maintained by ErDreiwen;
+              unofficial as it gets and never claiming otherwise.
             </p>
           </article>
         </section>
 
         <section className="link-desk" aria-labelledby="links-title">
           <div>
-            <p className="eyebrow">Files &amp; links</p>
-            <h2 id="links-title">Get Recordable Community</h2>
+            <p className="eyebrow">The useful bits</p>
+            <h2 id="links-title">Right. Get on with it.</h2>
           </div>
           <nav className="file-links" aria-label="Project files">
             <a href={DOWNLOAD_PATH} download>
               <span>01</span>
-              Download
+              Get the JAR
               <small>Forge 1.8.9 JAR</small>
             </a>
             <Link href="/docs">
               <span>02</span>
               Docs
-              <small>Install &amp; use</small>
+              <small>Read before shouting</small>
             </Link>
             <Link href="/faq">
               <span>03</span>
               FAQ
-              <small>Original &amp; port</small>
+              <small>Questions, obviously</small>
             </Link>
             <Link href="/report">
               <span>04</span>
-              Report Center
-              <small>Prepare a useful report</small>
+              Something knackered?
+              <small>Build a useful report</small>
             </Link>
             <a
               href="https://github.com/JoEusebe/record-able"
@@ -127,11 +129,12 @@ export default function Home() {
             >
               <span>05</span>
               Original source
-              <small>GitHub ↗</small>
+              <small>Credit where it is due ↗</small>
             </a>
           </nav>
           <p className="fork-status">
-            The ErDreiwen fork is being prepared and is not public yet.
+            The public fork is not live yet. We say that here instead of
+            sending you to a dead link.
           </p>
         </section>
 
@@ -140,11 +143,11 @@ export default function Home() {
             i
           </div>
           <div>
-            <h2 id="lunar-title">Using Lunar?</h2>
+            <h2 id="lunar-title">Lunar being awkward?</h2>
             <p>
-              Choose Lunar&apos;s <strong>Vanilla/Forge</strong> profile. The
-              branded Lunar/Ichor runtime filters external Forge mods before
-              they load.
+              Use <strong>Vanilla/Forge</strong>. Branded Lunar/Ichor bins
+              external Forge JARs before they load. That is the launcher being
+              clever, not this mod.
             </p>
           </div>
         </aside>
@@ -157,9 +160,9 @@ export default function Home() {
 
       <footer className="site-footer">
         <p>
-          Recordable Community is an unofficial port · Original Record-able by
-          Minewind&apos;s Jo Eusebe · Port maintained by ErDreiwen · MIT
-          licensed
+          Built with Manc attitude, not corporate polish · Recordable Community
+          is unofficial · Original Record-able by Minewind&apos;s Jo Eusebe ·
+          Port maintained by ErDreiwen · MIT licensed
         </p>
         <nav aria-label="Social links">
           <a

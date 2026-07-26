@@ -6,7 +6,7 @@ import { WindowShell } from "../window-shell";
 export const metadata: Metadata = {
   title: "FAQ",
   description:
-    "Answers about the original Record-able Fabric mod and the unofficial Recordable Community Forge 1.8.9 port.",
+    "Straight answers about the original Record-able Fabric mod and this mouthy unofficial Forge 1.8.9 community port.",
 };
 
 type Faq = {
@@ -30,8 +30,8 @@ const originalFaqs: Faq[] = [
     question: "Is this the official Record-able website?",
     answer: (
       <p>
-        No. This site belongs to Recordable Community, an unofficial Forge
-        1.8.9 port. Use the{" "}
+        Nope. This is Recordable Community, an unofficial Forge 1.8.9 port.
+        Use the{" "}
         <a
           href="https://modrinth.com/mod/record-able"
           rel="noreferrer"
@@ -39,7 +39,7 @@ const originalFaqs: Faq[] = [
         >
           original Modrinth page
         </a>{" "}
-        for official releases and announcements.
+        for official releases and announcements. Credit stays where it belongs.
       </p>
     ),
   },
@@ -47,9 +47,9 @@ const originalFaqs: Faq[] = [
     question: "Which Minecraft versions and loaders does the original support?",
     answer: (
       <p>
-        The original project is Fabric-only. Minecraft and Java requirements
-        vary between its release families, so choose a matching file from the
-        official Modrinth versions page instead of using this Forge download.
+        The original is Fabric-only. Minecraft and Java requirements vary
+        between releases, so check the official Modrinth versions page. Do not
+        guess, and do not use this Forge download in any Fabric profile.
       </p>
     ),
   },
@@ -57,9 +57,9 @@ const originalFaqs: Faq[] = [
     question: "Does the original mod require FFmpeg?",
     answer: (
       <p>
-        Yes. FFmpeg turns captured frames and audio into playable video. It is
-        not bundled inside the mod; Record-able asks before downloading and
-        verifying it when setup is required.
+        Yes. FFmpeg does the grunt work that turns frames and audio into a
+        playable video. It is not bundled; Record-able asks before downloading
+        and verifying it.
       </p>
     ),
   },
@@ -67,9 +67,9 @@ const originalFaqs: Faq[] = [
     question: "Does it replace OBS?",
     answer: (
       <p>
-        It can handle Minecraft-only recording without a separate screen
-        recorder. It does not replace OBS scenes, livestreaming, webcam
-        layouts, alerts, or full desktop capture.
+        Not completely. It handles Minecraft-only recording without a separate
+        screen recorder. OBS still wins for scenes, livestreaming, webcams,
+        alerts, and full desktop capture. Horses for courses.
       </p>
     ),
   },
@@ -97,9 +97,9 @@ const originalFaqs: Faq[] = [
     question: "Where should I report an original-mod problem?",
     answer: (
       <p>
-        Use the support links on the original Modrinth page, especially the
-        creator&apos;s Discord. A report prepared here does not automatically
-        reach or represent the original maintainer.
+        Use the original Modrinth support links, especially the creator&apos;s
+        Discord. A report built here does not magically teleport to the
+        original maintainer.
       </p>
     ),
   },
@@ -110,9 +110,9 @@ const communityFaqs: Faq[] = [
     question: "What is Recordable Community?",
     answer: (
       <p>
-        It is an unofficial, community-maintained Forge 1.8.9 port of
-        Record-able. The original attribution and MIT license are retained; it
-        is not an official release or endorsement from the original author.
+        An unofficial, community-maintained Forge 1.8.9 port of Record-able.
+        We keep the original attribution and MIT license and claim precisely
+        none of the original author&apos;s credit.
       </p>
     ),
   },
@@ -120,8 +120,9 @@ const communityFaqs: Faq[] = [
     question: "What does the port require?",
     answer: (
       <p>
-        Minecraft 1.8.9, Forge 11.15.1.2318, and Java 8 for the game. Keep only
-        one Record-able or Recordable Community JAR in the profile.
+        Minecraft 1.8.9, Forge 11.15.1.2318, and Java 8. Those versions. Do not
+        freestyle it. Keep one Record-able or Recordable Community JAR in the
+        profile.
       </p>
     ),
   },
@@ -129,9 +130,9 @@ const communityFaqs: Faq[] = [
     question: "Does it work in Prism and Lunar Launcher?",
     answer: (
       <p>
-        Prism Launcher is supported. In Lunar, use the Vanilla/Forge option
-        with a Forge 1.8.9 profile. The branded Lunar/Ichor runtime filters
-        arbitrary external Forge JARs before Forge can load them.
+        Prism works. In Lunar, use Vanilla/Forge with a Forge 1.8.9 profile.
+        Branded Lunar/Ichor bins arbitrary external Forge JARs before Forge can
+        load them.
       </p>
     ),
   },
@@ -200,9 +201,9 @@ const communityFaqs: Faq[] = [
     question: "Does the Report Center upload my logs?",
     answer: (
       <p>
-        No. The builder runs in your browser and does not submit or upload the
-        text you enter. Redact usernames, server addresses, chat, file paths,
-        tokens, and other private details before sharing the result.
+        No. We are mouthy, not nosy. The builder stays in your browser and
+        uploads nothing. Redact usernames, server addresses, chat, file paths,
+        tokens, and anything else private before sharing.
       </p>
     ),
   },
@@ -241,26 +242,28 @@ export default function FaqPage() {
       <main id="main-content" className="faq-page">
         <header className="page-lead">
           <div>
-            <p className="issue-line">HELP DESK / TWO PROJECTS</p>
-            <h1>Frequently asked questions</h1>
+            <p className="issue-line">
+              QUESTIONS / TWO PROJECTS / BEFORE ANYONE GETS LIVELY
+            </p>
+            <h1>Questions people keep asking.</h1>
             <p>
-              Start with the project you actually installed. The original
-              Fabric mod and this Forge port have different requirements and
-              maintainers.
+              Two projects, different requirements, different maintainers.
+              Pick the one you actually installed and save everyone three
+              comments of confusion.
             </p>
           </div>
           <Link className="button button-primary" href="/report">
-            Build a report
+            Something broken?
           </Link>
         </header>
 
         <nav className="scope-switcher" aria-label="FAQ groups">
           <a href="#original">
-            <span>Original</span>
+            <span>The original one</span>
             Record-able / Fabric
           </a>
           <a href="#community">
-            <span>This port</span>
+            <span>This scrappy port</span>
             Recordable Community / Forge 1.8.9
           </a>
         </nav>
@@ -268,13 +271,13 @@ export default function FaqPage() {
         <div className="faq-columns">
           <FaqGroup
             id="original"
-            label="01 / OFFICIAL PROJECT"
+            label="01 / CREDIT WHERE IT IS DUE"
             title="Original Record-able"
             faqs={originalFaqs}
           />
           <FaqGroup
             id="community"
-            label="02 / UNOFFICIAL PORT"
+            label="02 / OUR BIT"
             title="Recordable Community"
             faqs={communityFaqs}
           />
@@ -285,7 +288,7 @@ export default function FaqPage() {
             Read the docs
           </Link>
           <Link className="button button-primary" href="/report">
-            Report a problem
+            Report what is broken
           </Link>
         </div>
       </main>

@@ -309,6 +309,18 @@ summary:focus-visible {
   font-size: 0.67rem;
 }
 
+.manc-stamp {
+  display: inline-block;
+  margin: 1rem 0 0;
+  padding: 0.35rem 0.5rem;
+  color: #7a2e14;
+  font: 700 0.58rem/1 var(--mono);
+  letter-spacing: 0.12em;
+  border: 2px solid var(--orange);
+  background: #fff1c9;
+  transform: rotate(-1.2deg);
+}
+
 .cover-note {
   align-self: start;
   padding: 1rem 0 1.2rem 1rem;
@@ -1299,6 +1311,12 @@ summary:focus-visible {
 .logs-content {
   display: grid;
   gap: 0.8rem;
+}
+
+.privacy-gate {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
 }
 
 .privacy-warning {

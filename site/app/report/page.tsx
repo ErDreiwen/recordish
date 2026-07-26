@@ -5,7 +5,7 @@ import { ReportBuilder } from "./report-builder";
 export const metadata: Metadata = {
   title: "Report Center",
   description:
-    "Build a clear bug, interface, recording, FFmpeg, launcher, documentation, or feature report for Recordable Community or the original Record-able mod.",
+    "Tell us what broke properly and build a useful report for Recordable Community or the original Record-able mod.",
 };
 
 export default function ReportPage() {
@@ -15,17 +15,17 @@ export default function ReportPage() {
         <header className="report-header">
           <div>
             <p className="issue-line">
-              RECORDABLE COMMUNITY / GUIDED REPORT CENTER
+              SOMETHING KNACKERED? / GIVE US THE USEFUL BITS
             </p>
-            <h1>Make a useful report.</h1>
+            <h1>Tell us what broke. Properly.</h1>
             <p>
-              Describe the problem once. The desk turns it into a tidy report
-              that maintainers can act on.
+              &ldquo;It does not work, mate&rdquo; tells us very little. Fill
+              this in once and get a report somebody can actually fix.
             </p>
           </div>
           <aside className="report-local-note" aria-label="How reports work">
-            <strong>Local tool</strong>
-            <span>Nothing is uploaded or submitted from this page.</span>
+            <strong>Stays on your machine</strong>
+            <span>We are mouthy, not creepy. Nothing gets uploaded here.</span>
           </aside>
         </header>
 

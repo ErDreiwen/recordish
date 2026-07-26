@@ -5,7 +5,7 @@ import { WindowShell } from "../window-shell";
 export const metadata: Metadata = {
   title: "Docs",
   description:
-    "Install and use Recordable Community for Forge 1.8.9, configure FFmpeg, and troubleshoot common recording issues.",
+    "Install Recordable Community, get FFmpeg behaving, and fix the usual Forge 1.8.9 nonsense without the corporate waffle.",
 };
 
 const DOWNLOAD_PATH =
@@ -18,15 +18,16 @@ export default function DocsPage() {
         <header className="docs-header">
           <div>
             <p className="issue-line">
-              FIELD MANUAL / UNOFFICIAL COMMUNITY PORT 1.0.0
+              RIGHT THEN / FIELD MANUAL / COMMUNITY PORT 1.0.0
             </p>
-            <h1>Recordable Community docs</h1>
+            <h1>Docs. Read these before kicking off.</h1>
             <p>
-              The short guide to installing, recording, and finding your clips.
+              Installation, recording, files, and fixes. Straight answers. No
+              ten-minute intro.
             </p>
           </div>
           <a className="button button-primary" href={DOWNLOAD_PATH} download>
-            Download .jar
+            Get the JAR
           </a>
         </header>
 
@@ -42,7 +43,7 @@ export default function DocsPage() {
         <div className="docs-grid">
           <section id="install">
             <p className="section-number">01</p>
-            <h2>Install</h2>
+            <h2>Install it properly</h2>
             <ol>
               <li>Create a Minecraft 1.8.9 instance.</li>
               <li>Install Forge 11.15.1.2318.</li>
@@ -53,14 +54,14 @@ export default function DocsPage() {
               <li>Start Minecraft with Java 8.</li>
             </ol>
             <p className="callout">
-              Keep only one Recordable Community JAR in the profile. A small
-              clapperboard on the title screen confirms it loaded.
+              One Recordable Community JAR. Not two. If the clapperboard turns
+              up on the title screen, you are sorted.
             </p>
           </section>
 
           <section id="controls">
             <p className="section-number">02</p>
-            <h2>Default keys</h2>
+            <h2>Keys that do stuff</h2>
             <dl className="key-list">
               <div>
                 <dt>Start / stop</dt>
@@ -94,15 +95,15 @@ export default function DocsPage() {
               </div>
             </dl>
             <p>
-              Join a world, press the recording key, then press it again to
-              save. Auto-record is on by default and can be disabled in
-              settings. Replay, bookmark, and censor keys begin unbound.
+              Join a world, press record, then press it again to save. Auto
+              Record starts enabled; switch it off in settings if that does
+              your head in. Replay, bookmark, and censor keys begin unbound.
             </p>
           </section>
 
           <section id="files">
             <p className="section-number">03</p>
-            <h2>Files</h2>
+            <h2>Where your files went</h2>
             <dl className="path-list">
               <div>
                 <dt>Recordings</dt>
@@ -129,17 +130,20 @@ export default function DocsPage() {
                 </dd>
               </div>
             </dl>
-            <p>All paths are relative to the launcher&apos;s game folder.</p>
+            <p>
+              All paths are inside the launcher&apos;s game folder. Check the
+              right instance before declaring them vanished.
+            </p>
           </section>
 
           <section id="ffmpeg">
             <p className="section-number">04</p>
-            <h2>FFmpeg</h2>
+            <h2>FFmpeg does the work</h2>
             <p>
               FFmpeg turns captured frames and audio into playable video. On
               first launch, choose <strong>Download FFmpeg</strong>, review the
               source and destination, then confirm the download. Nothing is
-              fetched before that final click.
+              fetched before that final click. We ask first. We are not animals.
             </p>
             <p>
               Already have it? Open settings with <kbd>F9</kbd>, search for
@@ -151,7 +155,7 @@ export default function DocsPage() {
 
           <section id="lunar">
             <p className="section-number">05</p>
-            <h2>Lunar Launcher</h2>
+            <h2>Lunar being Lunar</h2>
             <p>
               Use Lunar&apos;s <strong>Vanilla/Forge</strong> option with a
               Forge 1.8.9 profile. Put the mod in:
@@ -160,16 +164,16 @@ export default function DocsPage() {
               <code>%USERPROFILE%\.lunarclient\profiles\vanilla-1.8\mods</code>
             </pre>
             <p>
-              Do not use the branded Lunar/Ichor runtime. It filters arbitrary
-              external Forge JARs before Forge sees them; that cannot be fixed
-              from inside this mod.
+              Do not use branded Lunar/Ichor. It bins arbitrary external Forge
+              JARs before Forge sees them. The mod cannot fix a launcher that
+              never lets it through the door.
             </p>
           </section>
 
           <section id="troubleshooting">
             <p className="section-number">06</p>
-            <h2>Troubleshooting</h2>
-            <h3>The mod does not appear</h3>
+            <h2>When it has gone a bit wrong</h2>
+            <h3>The mod has gone missing</h3>
             <p>
               Confirm Minecraft, Forge, and Java versions; remove duplicate
               JARs; and check <code>logs\latest.log</code> for{" "}
@@ -181,13 +185,13 @@ export default function DocsPage() {
               space, and review the chat error or latest log. The default free
               space floor is 500 MB.
             </p>
-            <h3>Black video or missing audio</h3>
+            <h3>Black video or silent audio</h3>
             <p>
               Run <strong>Capture Test</strong>; temporarily disable shaders
               and OptiFine Fast Render. For audio, enable Capture Audio and
               restart after changing audio devices.
             </p>
-            <h3>Replay did not save</h3>
+            <h3>The replay did not save</h3>
             <p>
               Enable Replay Buffer, bind Save Replay Buffer, and let the buffer
               warm up. Automatic clips also need Auto-Clipping and at least one
@@ -198,18 +202,18 @@ export default function DocsPage() {
 
         <div className="docs-end">
           <Link className="button" href="/">
-            ← Back home
+            Back home
           </Link>
           <a className="button button-primary" href={DOWNLOAD_PATH} download>
-            Download Recordable Community
+            Get Recordable Community
           </a>
         </div>
       </main>
 
       <footer className="site-footer">
         <p>
-          Unofficial Forge 1.8.9 port of Record-able by Minewind&apos;s Jo
-          Eusebe.
+          Unofficial Forge 1.8.9 port · Original Record-able by
+          Minewind&apos;s Jo Eusebe · Credit where it is due.
         </p>
         <nav aria-label="Project links">
           <a

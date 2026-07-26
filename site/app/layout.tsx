@@ -4,7 +4,7 @@ import "./globals.css";
 
 const SITE_NAME = "Recordable Community — Unofficial Forge 1.8.9 Port";
 const SITE_DESCRIPTION =
-  "An unofficial community Forge 1.8.9 port of Record-able, the Minecraft recording mod by Minewind's Jo Eusebe.";
+  "The unofficial Forge 1.8.9 community port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.";
 
 function requestOrigin(
   host: string | null,
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
     requestHeaders.get("x-forwarded-proto"),
   );
-  const socialImage = new URL("/og-community.png", origin).toString();
+  const socialImage = new URL("/og-manc.png", origin).toString();
 
   return {
     metadataBase: origin,
@@ -55,7 +55,7 @@ export async function generateMetadata(): Promise<Metadata> {
           url: socialImage,
           width: 1731,
           height: 909,
-          alt: "Recordable Community, an unofficial Forge 1.8.9 port",
+          alt: "Recordable Community, the unofficial Forge 1.8.9 port with no corporate waffle",
         },
       ],
     },
