@@ -1,0 +1,441 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable tag to recover, for example v1.1.0
+        required: true
+        type: string
+      recovery:
+        description: Recovery operation
+        required: true
+        default: publish-draft
+        type: choice
+        options:
+          - publish-draft
+          - site-metadata
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_USER_HOME: ${{ runner.temp }}/recordish-gradle-user-home
+
+concurrency:
+  group: recordish-stable-release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare semantic release
+    if: >-
+      github.event_name == 'push' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+
+    steps:
+      - name: Update release PR or create draft release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-stable:
+    name: Verify and publish stable release
+    needs:
+      - release-please
+    if: >-
+      always() &&
+      (
+        (
+          github.event_name == 'push' &&
+          needs.release-please.result == 'success' &&
+          needs.release-please.outputs.release-created == 'true'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.recovery == 'publish-draft'
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release-info.outputs.tag }}
+      version: ${{ steps.release-info.outputs.version }}
+      manifest-artifact: ${{ steps.release-info.outputs.manifest-artifact }}
+
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: >-
+            ${{
+              github.event_name == 'workflow_dispatch' &&
+              inputs.tag ||
+              needs.release-please.outputs.sha
+            }}
+
+      - name: Resolve and validate draft release
+        id: release-info
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOMATIC_TAG: ${{ needs.release-please.outputs.tag }}
+          AUTOMATIC_SHA: ${{ needs.release-please.outputs.sha }}
+          RECOVERY_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${RECOVERY_TAG}"
+          else
+            tag="${AUTOMATIC_TAG}"
+          fi
+
+          if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Stable tag must be exactly vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          release_draft="$(
+            gh release view "${tag}" --json isDraft --jq '.isDraft'
+          )"
+          if [[ "${release_draft}" != "true" ]]; then
+            echo "::error::${tag} is not an existing draft release."
+            exit 1
+          fi
+
+          checked_out_sha="$(git rev-parse HEAD)"
+          tagged_sha="$(git rev-list -n 1 "${tag}")"
+          if [[ "${checked_out_sha}" != "${tagged_sha}" ]]; then
+            echo "::error::Checkout ${checked_out_sha} does not match ${tag} at ${tagged_sha}."
+            exit 1
+          fi
+          if [[ -n "${AUTOMATIC_SHA}" && "${checked_out_sha}" != "${AUTOMATIC_SHA}" ]]; then
+            echo "::error::Release Please SHA does not match the tagged commit."
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "manifest-artifact=recordish-stable-manifest-${version}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Install Java 8 toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "8"
+
+      - name: Remember Java 8 home
+        shell: bash
+        run: echo "RECORDISH_JDK8=${JAVA_HOME}" >> "${GITHUB_ENV}"
+
+      - name: Install Java 17 Gradle host
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Build exact stable version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release-info.outputs.version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew \
+            --no-daemon \
+            clean \
+            build \
+            "-PmodVersion=${RELEASE_VERSION}" \
+            "-Dorg.gradle.java.installations.paths=${RECORDISH_JDK8}"
+
+      - name: Verify and package stable artifact
+        id: package
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release-info.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release-info.outputs.version }}
+        run: |
+          runtime_version="${RELEASE_VERSION}-forge-1.8.9"
+          mapfile -t jars < <(
+            find build/libs -maxdepth 1 -type f -name '*.jar' -print | sort
+          )
+          if [[ "${#jars[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one remapped JAR in build/libs."
+            find build -maxdepth 3 -type f -name '*.jar' -print || true
+            exit 1
+          fi
+
+          jar_path="${jars[0]}"
+          expected_name="recordable-${RELEASE_VERSION}-forge-1.8.9.jar"
+          if [[ "$(basename "${jar_path}")" != "${expected_name}" ]]; then
+            echo "::error::Expected ${expected_name}, got $(basename "${jar_path}")."
+            exit 1
+          fi
+
+          jar tf "${jar_path}" > "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "dev/recordable/RecordableMod.class" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          unzip -p "${jar_path}" mcmod.info |
+            grep -F "\"version\": \"${runtime_version}\""
+          unzip -p "${jar_path}" META-INF/MANIFEST.MF |
+            tr -d '\r' |
+            grep -F "Implementation-Version: ${runtime_version}"
+          javap -verbose -classpath "${jar_path}" dev.recordable.RecordableMod |
+            grep -F "major version: 52"
+
+          node scripts/package-release.mjs \
+            --jar "${jar_path}" \
+            --version "${RELEASE_VERSION}" \
+            --channel stable \
+            --output-dir dist/stable \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "$(git rev-parse HEAD)" \
+            --tag "${RELEASE_TAG}"
+
+          echo "jar=dist/stable/${expected_name}" >> "${GITHUB_OUTPUT}"
+          echo "checksum=dist/stable/${expected_name}.sha256" \
+            >> "${GITHUB_OUTPUT}"
+          echo "manifest=dist/stable/release-manifest.json" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Upload assets to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-info.outputs.tag }}
+        run: |
+          gh release upload "${RELEASE_TAG}" \
+            "${{ steps.package.outputs.jar }}" \
+            "${{ steps.package.outputs.checksum }}" \
+            "${{ steps.package.outputs.manifest }}" \
+            --clobber
+
+      - name: Preserve exact site manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.release-info.outputs.manifest-artifact }}
+          path: ${{ steps.package.outputs.manifest }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish verified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-info.outputs.tag }}
+        run: |
+          gh release edit "${RELEASE_TAG}" \
+            --draft=false \
+            --prerelease=false \
+            --latest
+
+  site-metadata:
+    name: Publish site release metadata
+    needs:
+      - release-please
+      - publish-stable
+    if: >-
+      always() &&
+      (
+        needs.publish-stable.result == 'success' ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.recovery == 'site-metadata'
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: recordish-publish-site-metadata
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Resolve metadata release
+        id: metadata-info
+        shell: bash
+        env:
+          PUBLISHED_TAG: ${{ needs.publish-stable.outputs.tag }}
+          RECOVERY_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.recovery }}" == "site-metadata" ]]; then
+            tag="${RECOVERY_TAG}"
+          else
+            tag="${PUBLISHED_TAG}"
+          fi
+          if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Stable tag must be exactly vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download manifest from this release run
+        if: needs.publish-stable.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.publish-stable.outputs.manifest-artifact }}
+          path: incoming
+
+      - name: Recover manifest from published GitHub Release
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.recovery == 'site-metadata'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata-info.outputs.tag }}
+        run: |
+          is_draft="$(
+            gh release view "${RELEASE_TAG}" --json isDraft --jq '.isDraft'
+          )"
+          if [[ "${is_draft}" != "false" ]]; then
+            echo "::error::Site recovery requires a published stable release."
+            exit 1
+          fi
+          mkdir -p incoming
+          gh release download "${RELEASE_TAG}" \
+            --pattern release-manifest.json \
+            --dir incoming
+
+      - name: Validate release manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.metadata-info.outputs.tag }}
+        run: |
+          node --input-type=module -e '
+            import { readFile } from "node:fs/promises";
+            const [path, tag] = process.argv.slice(1);
+            const value = JSON.parse(await readFile(path, "utf8"));
+            const required = [
+              "schemaVersion", "channel", "version", "minecraft", "forge",
+              "java", "fileName", "fileSizeBytes", "sha256", "downloadUrl",
+              "checksumUrl", "sourceCommit", "publishedAt"
+            ];
+            for (const key of required) {
+              if (value[key] === undefined || value[key] === "") {
+                throw new Error(`Manifest is missing ${key}`);
+              }
+            }
+            if (value.schemaVersion !== 1 || value.channel !== "stable") {
+              throw new Error("Manifest is not schema v1 stable metadata");
+            }
+            if (`v${value.version}` !== tag) {
+              throw new Error(`Manifest ${value.version} does not match ${tag}`);
+            }
+            if (!value.downloadUrl.includes(`/download/${tag}/`)) {
+              throw new Error("Download URL does not use the stable tag");
+            }
+            if (!value.checksumUrl.includes(`/download/${tag}/`)) {
+              throw new Error("Checksum URL does not use the stable tag");
+            }
+          ' incoming/release-manifest.json "${RELEASE_TAG}"
+
+      - name: Update, test, and commit site metadata
+        id: site-commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.metadata-info.outputs.tag }}
+        run: |
+          git fetch origin main
+          git switch --force-create release-site-metadata origin/main
+          cp incoming/release-manifest.json site/release-manifest.json
+          git rm -r --ignore-unmatch site/public/downloads
+
+          npm ci --prefix site
+          npm run lint --prefix site
+          npm test --prefix site
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/release-manifest.json
+
+          if git diff --cached --quiet; then
+            echo "Site metadata already matches ${RELEASE_TAG}."
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            git commit \
+              -m "chore(release): publish ${RELEASE_TAG} site metadata"
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Push site metadata commit
+        if: steps.site-commit.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth_header="$(
+            printf 'x-access-token:%s' "${GH_TOKEN}" | base64 | tr -d '\n'
+          )"
+          cleanup_auth() {
+            git config --local --unset-all \
+              http.https://github.com/.extraheader || true
+          }
+          trap cleanup_auth EXIT
+          git config --local \
+            http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic ${auth_header}"
+          git push origin HEAD:main
+          cleanup_auth
+          trap - EXIT
+
+      - name: Trigger optional Vercel deploy hook
+        shell: bash
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [[ -n "${VERCEL_DEPLOY_HOOK_URL}" ]]; then
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --request POST \
+              "${VERCEL_DEPLOY_HOOK_URL}" > /dev/null
+            echo "Vercel deploy hook accepted the request."
+          else
+            echo "No deploy hook configured; Vercel Git integration will deploy main."
+          fi

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { COMMUNITY_DISCORD, PORT_ISSUES } from "../links";
+import { RELEASE } from "../release";
 
 type Category =
   | "bug"
@@ -88,7 +89,7 @@ const initialReport: ReportState = {
   operatingSystem: "",
   java: "Java 8 (64-bit)",
   minecraft: "1.8.9",
-  modVersion: "1.0.0",
+  modVersion: RELEASE.version,
   loader: "Forge 11.15.1.2318",
   ffmpeg: "",
   frequency: "",
@@ -271,7 +272,7 @@ export function ReportBuilder() {
       ...current,
       project,
       minecraft: project === "community" ? "1.8.9" : "",
-      modVersion: project === "community" ? "1.0.0" : "",
+      modVersion: project === "community" ? RELEASE.version : "",
       loader:
         project === "community"
           ? "Forge 11.15.1.2318"
@@ -706,7 +707,7 @@ export function ReportBuilder() {
                   setField("modVersion", event.target.value)
                 }
                 placeholder={
-                  report.project === "community" ? "1.0.0" : "From Modrinth"
+                  report.project === "community" ? RELEASE.version : "From Modrinth"
                 }
                 value={report.modVersion}
               />

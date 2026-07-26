@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RELEASE } from "../release";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
@@ -16,7 +17,7 @@ export default function DocsPage() {
         <header className="docs-header">
           <div>
             <p className="issue-line">
-              RIGHT THEN / FIELD MANUAL / RECORD-ISH 1.0.0
+              RIGHT THEN / FIELD MANUAL / RECORD-ISH {RELEASE.version}
             </p>
             <h1>Docs. Read these before kicking off.</h1>
             <p>

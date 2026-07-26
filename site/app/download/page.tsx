@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CHECKSUM_PATH, DOWNLOAD_PATH, RELEASE } from "../release";
+import {
+  NIGHTLY_DOWNLOAD_URL,
+  RELEASE,
+  STABLE_CHECKSUM_URL,
+  STABLE_DOWNLOAD_URL,
+} from "../release";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
@@ -11,6 +16,8 @@ export const metadata: Metadata = {
 };
 
 export default function DownloadPage() {
+  const stableDownloadIsLocal = STABLE_DOWNLOAD_URL.startsWith("/");
+
   return (
     <WindowShell>
       <main className="download-page" id="main-content">
@@ -44,8 +51,8 @@ export default function DownloadPage() {
           <a
             aria-label={`Download record-ish ${RELEASE.version} for Forge ${RELEASE.minecraft}, ${RELEASE.fileSize} JAR`}
             className="download-main-button"
-            download={RELEASE.fileName}
-            href={DOWNLOAD_PATH}
+            download={stableDownloadIsLocal ? RELEASE.fileName : undefined}
+            href={STABLE_DOWNLOAD_URL}
           >
             <span>Download the JAR</span>
             <small>{RELEASE.fileName}</small>
@@ -55,6 +62,20 @@ export default function DownloadPage() {
             file fingerprint below. Do not rename it to <code>.exe</code>, you
             weapon.
           </p>
+
+          <aside className="nightly-download" aria-label="Nightly build">
+            <div>
+              <strong>LATEST MAIN BUILD / HERE BE DRAGONS</strong>
+              <span>
+                Fresh code, fewer guarantees. It may break, sulk, or ruin the
+                clip you actually wanted. Stable above is the sensible one.
+              </span>
+            </div>
+            <a className="nightly-download-link" href={NIGHTLY_DOWNLOAD_URL}>
+              <span>Download risky nightly</span>
+              <small>Built from main · absolutely no promises</small>
+            </a>
+          </aside>
         </section>
 
         <section
@@ -169,7 +190,14 @@ export default function DownloadPage() {
                   Get-FileHash .\{RELEASE.fileName} -Algorithm SHA256
                 </code>
               </pre>
-              <a download href={CHECKSUM_PATH}>
+              <a
+                download={
+                  stableDownloadIsLocal
+                    ? `${RELEASE.fileName}.sha256`
+                    : undefined
+                }
+                href={STABLE_CHECKSUM_URL}
+              >
                 Download the .sha256 file
               </a>
             </details>

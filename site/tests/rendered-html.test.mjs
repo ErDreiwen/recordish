@@ -3,8 +3,22 @@ import { access, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-const expectedChecksum =
-  "00D7E034DDD1E94B4E9A2B5B89C0AD09C7FE9A63E2291D4B3439A69925D6ED71";
+const releaseManifest = JSON.parse(
+  await readFile(
+    new URL("../release-manifest.json", import.meta.url),
+    "utf8",
+  ),
+);
+const expectedChecksum = releaseManifest.sha256.toUpperCase();
+const nightlyDownloadUrl =
+  "https://github.com/ErDreiwen/record-ish/releases/download/nightly/recordable-nightly-forge-1.8.9.jar";
+
+function formattedFileSize(bytes) {
+  const mebibyte = 1024 * 1024;
+  return bytes >= mebibyte
+    ? (bytes / mebibyte).toFixed(2) + " MiB"
+    : (bytes / 1024).toFixed(1) + " KiB";
+}
 
 async function render(path = "/") {
   const route = path === "/" ? "" : path.replace(/^\/|\/$/g, "");
@@ -39,9 +53,8 @@ test("server-renders the unofficial record-ish homepage", async () => {
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
   assert.match(html, /Java[\s\S]*8/);
   assert.match(html, /href="\/download\/"/);
-  assert.doesNotMatch(
-    html,
-    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
+  assert.ok(
+    !html.includes(`href="${releaseManifest.downloadUrl}"`),
   );
   assert.match(html, /href="\/docs\/"/);
   assert.match(html, /href="\/faq\/"/);
@@ -60,7 +73,7 @@ test("server-renders the unofficial record-ish homepage", async () => {
   assert.match(html, /https:\/\/discord\.gg\/YRJrvgverM/);
   assert.match(
     html,
-    /property="og:image" content="https:\/\/kmsi\.me\/og-record-ish\.png"/,
+    /property="og:image" content="https:\/\/recordish\.kmsi\.me\/og-record-ish\.png"/,
   );
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -108,13 +121,24 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /<title>Download .* record-ish/i);
   assert.match(html, /ONE FILE \/ NO INSTALLER \/ NO BOLLOCKS/);
   assert.match(html, /Download the bloody thing\./);
-  assert.match(
-    html,
-    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
+  assert.ok(
+    html.includes(`href="${releaseManifest.downloadUrl}"`),
   );
-  assert.match(html, /download="recordable-1\.0\.0-forge-1\.8\.9\.jar"/);
-  assert.match(html, /recordable-1\.0\.0-forge-1\.8\.9\.jar/);
-  assert.match(html, /1\.68 MiB/);
+  if (releaseManifest.downloadUrl.startsWith("/")) {
+    assert.ok(
+      html.includes(`download="${releaseManifest.fileName}"`),
+    );
+  } else {
+    assert.ok(
+      !html.includes(`download="${releaseManifest.fileName}"`),
+    );
+  }
+  assert.match(html, new RegExp(releaseManifest.fileName.replaceAll(".", "\\.")));
+  assert.ok(html.includes(formattedFileSize(releaseManifest.fileSizeBytes)));
+  assert.ok(
+    html.includes("v" + releaseManifest.version) ||
+      html.includes("v<!-- -->" + releaseManifest.version),
+  );
   assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
   assert.match(html, /Java[\s\S]*8/);
@@ -123,10 +147,12 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /class="release-fingerprint-row"/);
   assert.match(html, /SHA-256 is just the name of the fingerprint check/);
   assert.match(html, new RegExp(expectedChecksum));
-  assert.match(
-    html,
-    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar\.sha256"/,
+  assert.ok(
+    html.includes(`href="${releaseManifest.checksumUrl}"`),
   );
+  assert.match(html, /LATEST MAIN BUILD \/ HERE BE DRAGONS/);
+  assert.match(html, /Download risky nightly/);
+  assert.ok(html.includes(`href="${nightlyDownloadUrl}"`));
   assert.match(html, /Do not double-click it\./);
   assert.match(html, /Vanilla\/Forge/);
   assert.match(html, /Branded Lunar\/Ichor/);
@@ -204,53 +230,94 @@ test("server-renders concise installation and usage docs", async () => {
     /class="troubleshooting-question-mark"[^>]*>\?<\/span>/,
   );
   assert.match(html, /href="\/download\/"/);
-  assert.doesNotMatch(
-    html,
-    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
+  assert.ok(
+    !html.includes(`href="${releaseManifest.downloadUrl}"`),
   );
+  assert.ok(html.includes(releaseManifest.version));
 });
 
-test("ships the verified Forge JAR and no starter preview", async () => {
-  const jar = new URL(
-    "../public/downloads/recordable-1.0.0-forge-1.8.9.jar",
-    import.meta.url,
+test("validates release metadata and any bundled stable JAR", async () => {
+  assert.equal(releaseManifest.schemaVersion, 1);
+  assert.equal(releaseManifest.channel, "stable");
+  assert.match(
+    releaseManifest.version,
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/,
   );
-  const bytes = await readFile(jar);
-  const checksum = createHash("sha256").update(bytes).digest("hex").toUpperCase();
-  const checksumFile = await readFile(
-    new URL(
-      "../public/downloads/recordable-1.0.0-forge-1.8.9.jar.sha256",
-      import.meta.url,
+  assert.match(expectedChecksum, /^[0-9A-F]{64}$/);
+  assert.match(releaseManifest.sourceCommit, /^[0-9a-f]{40}$/i);
+  assert.ok(Number.isSafeInteger(releaseManifest.fileSizeBytes));
+  assert.ok(releaseManifest.fileSizeBytes > 0);
+  assert.ok(!Number.isNaN(Date.parse(releaseManifest.publishedAt)));
+  assert.ok(releaseManifest.fileName.endsWith(".jar"));
+  assert.ok(
+    releaseManifest.downloadUrl.endsWith("/" + releaseManifest.fileName),
+  );
+  assert.ok(
+    releaseManifest.checksumUrl.endsWith(
+      "/" + releaseManifest.fileName + ".sha256",
     ),
-    "utf8",
   );
+  assert.doesNotMatch(releaseManifest.downloadUrl, /\/releases\/latest\//);
+  assert.doesNotMatch(releaseManifest.checksumUrl, /\/releases\/latest\//);
 
-  assert.equal(checksum, expectedChecksum);
-  assert.equal(bytes.byteLength, 1765821);
-  assert.equal(
-    checksumFile.trim(),
-    `${expectedChecksum}  recordable-1.0.0-forge-1.8.9.jar`,
-  );
+  if (releaseManifest.downloadUrl.startsWith("/")) {
+    assert.ok(releaseManifest.checksumUrl.startsWith("/"));
+    const jar = new URL(
+      "../public" + releaseManifest.downloadUrl,
+      import.meta.url,
+    );
+    const bytes = await readFile(jar);
+    const checksum = createHash("sha256")
+      .update(bytes)
+      .digest("hex")
+      .toUpperCase();
+    const checksumFile = await readFile(
+      new URL("../public" + releaseManifest.checksumUrl, import.meta.url),
+      "utf8",
+    );
+
+    assert.equal(checksum, expectedChecksum);
+    assert.equal(bytes.byteLength, releaseManifest.fileSizeBytes);
+    assert.equal(
+      checksumFile.trim(),
+      expectedChecksum + "  " + releaseManifest.fileName,
+    );
+  } else {
+    for (const value of [
+      releaseManifest.downloadUrl,
+      releaseManifest.checksumUrl,
+    ]) {
+      const url = new URL(value);
+      assert.equal(url.protocol, "https:");
+    }
+  }
+
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
 
-  const [page, docs, windowShell, layout, packageJson] = await Promise.all([
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/docs/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/window-shell.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ]);
+  const [page, docs, reportBuilder, windowShell, layout, packageJson] =
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/docs/page.tsx", import.meta.url), "utf8"),
+      readFile(
+        new URL("../app/report/report-builder.tsx", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../app/window-shell.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ]);
 
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
   assert.doesNotMatch(layout, /Starter Project|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /"name": "recordable-forge-site"/);
-  for (const source of [page, docs, windowShell]) {
-    assert.doesNotMatch(
-      source,
-      /\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar/,
-    );
-    assert.match(source, /\/download/);
+  for (const currentSource of [page, docs, windowShell]) {
+    assert.doesNotMatch(currentSource, /\/downloads\/.*\.jar/);
+    assert.match(currentSource, /\/download/);
+  }
+  for (const currentSource of [page, docs, reportBuilder]) {
+    assert.doesNotMatch(currentSource, /\b1\.0\.0\b/);
+    assert.match(currentSource, /RELEASE\.version/);
   }
 });
 

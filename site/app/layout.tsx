@@ -5,7 +5,7 @@ const SITE_NAME = "record-ish — A Record-able Port for Forge 1.8.9";
 const SITE_DESCRIPTION =
   "record-ish is the unofficial Forge 1.8.9 port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.";
 
-const SITE_ORIGIN = new URL("https://kmsi.me");
+const SITE_ORIGIN = new URL("https://recordish.kmsi.me");
 const SOCIAL_IMAGE = new URL("/og-record-ish.png", SITE_ORIGIN).toString();
 
 export const metadata: Metadata = {

@@ -804,6 +804,56 @@ summary:focus-visible {
   font-size: 0.68rem;
 }
 
+.nightly-download {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, auto);
+  gap: 1rem 1.5rem;
+  align-items: center;
+  padding: 0.8rem;
+  color: #4f290d;
+  border: 1px dashed #a75a1d;
+  background: #f4dfaa;
+}
+
+.nightly-download > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.nightly-download strong {
+  font: 700 0.68rem/1.2 var(--sans);
+  letter-spacing: 0.09em;
+}
+
+.nightly-download > div > span {
+  font: 0.72rem/1.4 var(--serif);
+}
+
+.nightly-download-link {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.7rem 0.85rem;
+  color: #fff;
+  text-decoration: none;
+  border: 1px solid #713216;
+  background: var(--orange);
+  box-shadow: 3px 3px 0 rgba(113, 50, 22, 0.18);
+}
+
+.nightly-download-link:hover {
+  background: #a83e16;
+}
+
+.nightly-download-link span {
+  font: 700 0.76rem/1.1 var(--sans);
+}
+
+.nightly-download-link small {
+  color: #ffe2c9;
+  font: 0.58rem/1.3 var(--mono);
+}
+
 .download-requirements {
   border-top: 1px solid #fff;
   border-bottom: 1px solid var(--ink);
@@ -2088,6 +2138,10 @@ summary:focus-visible {
 
   .release-ticket {
     max-width: 260px;
+  }
+
+  .nightly-download {
+    grid-template-columns: 1fr;
   }
 
   .download-panel:nth-child(odd) {

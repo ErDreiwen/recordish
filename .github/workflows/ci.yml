@@ -1,0 +1,297 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_USER_HOME: ${{ runner.temp }}/recordish-gradle-user-home
+
+jobs:
+  mod:
+    name: Forge 1.8.9 mod
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.build-info.outputs.artifact-name }}
+      version: ${{ steps.build-info.outputs.version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Java 8 toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "8"
+
+      - name: Remember Java 8 home
+        shell: bash
+        run: echo "RECORDISH_JDK8=${JAVA_HOME}" >> "${GITHUB_ENV}"
+
+      - name: Install Java 17 Gradle host
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Select build version
+        id: build-info
+        shell: bash
+        run: |
+          base_version="$(tr -d '[:space:]' < version.txt)"
+          if [[ ! "${base_version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::version.txt must contain exactly MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+
+          short_sha="${GITHUB_SHA:0:12}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            version="${base_version}-nightly.${GITHUB_RUN_NUMBER}.g${short_sha}"
+          else
+            version="${base_version}-ci.${GITHUB_RUN_NUMBER}.g${short_sha}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "artifact-name=recordish-mod-${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify Java installations
+        shell: bash
+        run: |
+          java -version
+          "${RECORDISH_JDK8}/bin/java" -version
+
+      - name: Build and test remapped mod
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ steps.build-info.outputs.version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew \
+            --no-daemon \
+            clean \
+            build \
+            "-PmodVersion=${BUILD_VERSION}" \
+            "-Dorg.gradle.java.installations.paths=${RECORDISH_JDK8}"
+
+      - name: Locate and verify release JAR
+        id: release-jar
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ steps.build-info.outputs.version }}
+        run: |
+          runtime_version="${BUILD_VERSION}-forge-1.8.9"
+          expected_name="recordable-${BUILD_VERSION}-forge-1.8.9.jar"
+          mapfile -t jars < <(
+            find build/libs -maxdepth 1 -type f -name '*.jar' -print | sort
+          )
+          if [[ "${#jars[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one remapped JAR in build/libs."
+            find build -maxdepth 3 -type f -name '*.jar' -print || true
+            exit 1
+          fi
+
+          jar_path="${jars[0]}"
+          if [[ "$(basename "${jar_path}")" != "${expected_name}" ]]; then
+            echo "::error::Expected ${expected_name}, got $(basename "${jar_path}")."
+            exit 1
+          fi
+
+          jar tf "${jar_path}" > "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "dev/recordable/RecordableMod.class" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          unzip -p "${jar_path}" mcmod.info |
+            grep -F "\"version\": \"${runtime_version}\""
+          unzip -p "${jar_path}" META-INF/MANIFEST.MF |
+            tr -d '\r' |
+            grep -F "Implementation-Version: ${runtime_version}"
+          javap -verbose -classpath "${jar_path}" dev.recordable.RecordableMod |
+            grep -F "major version: 52"
+
+          echo "path=${jar_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload tested mod
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.build-info.outputs.artifact-name }}
+          path: ${{ steps.release-jar.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  site:
+    name: Static website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build and test
+        run: npm test
+
+  nightly:
+    name: Publish rolling nightly
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor != 'github-actions[bot]'
+    needs:
+      - mod
+      - site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: recordish-publish-nightly
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Download tested mod
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.mod.outputs.artifact-name }}
+          path: incoming
+
+      - name: Refuse to publish a stale main build
+        id: freshness
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_main="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha'
+          )"
+          if [[ "${current_main}" != "${GITHUB_SHA}" ]]; then
+            echo "Current main is ${current_main}; this run built ${GITHUB_SHA}."
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Package rolling nightly
+        if: steps.freshness.outputs.publish == 'true'
+        shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ needs.mod.outputs.version }}
+        run: |
+          mapfile -t jars < <(
+            find incoming -maxdepth 1 -type f -name '*.jar' -print | sort
+          )
+          if [[ "${#jars[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one downloaded JAR."
+            find incoming -maxdepth 2 -type f -print || true
+            exit 1
+          fi
+
+          node scripts/package-release.mjs \
+            --jar "${jars[0]}" \
+            --version "${NIGHTLY_VERSION}" \
+            --channel nightly \
+            --output-dir dist/nightly \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "${GITHUB_SHA}" \
+            --tag nightly \
+            --file-name recordable-nightly-forge-1.8.9.jar \
+            --manifest-name nightly-manifest.json
+
+      - name: Update nightly tag and prerelease
+        if: steps.freshness.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_VERSION: ${{ needs.mod.outputs.version }}
+        run: |
+          current_main="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha'
+          )"
+          if [[ "${current_main}" != "${GITHUB_SHA}" ]]; then
+            echo "Current main advanced to ${current_main}; skipping ${GITHUB_SHA}."
+            exit 0
+          fi
+
+          if gh api \
+            "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" \
+            > /dev/null 2>&1; then
+            gh api \
+              --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true \
+              > /dev/null
+          else
+            gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/nightly" \
+              -f sha="${GITHUB_SHA}" \
+              > /dev/null
+          fi
+
+          if gh release view nightly > /dev/null 2>&1; then
+            gh release edit nightly \
+              --draft=false \
+              --prerelease \
+              --title "record-ish nightly"
+          else
+            gh release create nightly \
+              --verify-tag \
+              --prerelease \
+              --title "record-ish nightly" \
+              --notes "Automated rolling build from main."
+          fi
+
+          gh release upload nightly \
+            dist/nightly/recordable-nightly-forge-1.8.9.jar \
+            dist/nightly/recordable-nightly-forge-1.8.9.jar.sha256 \
+            dist/nightly/nightly-manifest.json \
+            --clobber
+
+          gh release edit nightly \
+            --draft=false \
+            --prerelease \
+            --title "record-ish nightly" \
+            --notes "Automated ${NIGHTLY_VERSION} build from ${GITHUB_SHA}."

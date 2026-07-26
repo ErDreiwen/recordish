@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PORT_REPOSITORY } from "./links";
+import { RELEASE } from "./release";
 import { SiteFooter } from "./site-footer";
 import { WindowShell } from "./window-shell";
 
@@ -61,7 +62,7 @@ export default function Home() {
               </Link>
             </div>
             <p className="release-note">
-              Unofficial. Community-built. Not pretending otherwise. · v1.0.0
+              Unofficial. Community-built. Not pretending otherwise. · v{RELEASE.version}
             </p>
           </div>
 

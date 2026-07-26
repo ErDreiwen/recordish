@@ -29,11 +29,12 @@ The original MIT license and author attribution are retained.
 - [Original and Community port FAQ](docs/FAQ.md)
 - [Reporting a problem](docs/REPORTING.md)
 - [Desktop parity and verification](docs/PARITY.md)
+- [Release and deployment process](RELEASING.md)
 
 ## Install and record
 
 1. Install Forge 1.8.9 (`11.15.1.2318`).
-2. Put the finished `recordable-1.0.0-forge-1.8.9.jar` in the instance's
+2. Put the downloaded `recordable-<version>-forge-1.8.9.jar` in the instance's
    `mods` folder.
 3. Launch Minecraft. If FFmpeg is missing, Record-able opens a first-run setup
    prompt. Review the source and destination, then use **Download FFmpeg** on
@@ -107,8 +108,9 @@ verification record is kept in [docs/PARITY.md](docs/PARITY.md).
 
 ## Development
 
-Gradle itself needs a modern host JDK; compilation and game launch use the
-Java 8 toolchain.
+Gradle requires JDK 17 or newer to run this build; CI uses a JDK 17 host.
+Compilation, verification, and compatible client launch use the explicit Java
+8 toolchain, matching the Java version required by Minecraft 1.8.9.
 
 ```powershell
 .\gradlew.bat clean build
@@ -131,6 +133,10 @@ publishes the binaries, and probes the published executable:
 ```powershell
 .\gradlew.bat ffmpegInstallerSmokeTest
 ```
+
+Stable Semantic Versions and every-main nightlies are built by GitHub Actions;
+the JAR, checksum, and release manifest are published together. See
+[RELEASING.md](RELEASING.md) before changing version or download metadata.
 
 See [docs/PARITY.md](docs/PARITY.md) for the Forge adaptation and verification
 matrix, and [UPSTREAM.md](UPSTREAM.md) for provenance.

@@ -4,11 +4,13 @@
 
 1. Create or select a Minecraft `1.8.9` instance.
 2. Install Forge `11.15.1.2318`.
-3. Put `recordable-1.0.0-forge-1.8.9.jar` in that instance's `mods` folder.
+3. Put `recordable-<version>-forge-1.8.9.jar` in that instance's `mods` folder.
 4. Start the game with Java 8.
 
-Keep only one Record-able JAR in the profile. The title screen should show a
-small clapperboard button after a successful load.
+`<version>` is the stable version printed on the download page and in the
+GitHub Release, for example `1.1.0`. Keep only one Record-able JAR in the
+profile. The title screen should show a small clapperboard button after a
+successful load.
 
 ### Prism Launcher
 
