@@ -20,6 +20,14 @@ The port targets:
 
 The original MIT license and author attribution are retained.
 
+## Documentation
+
+- [Documentation hub](docs/README.md)
+- [Installation and FFmpeg](docs/INSTALLATION.md)
+- [Recording, replay, and BedWars clips](docs/USAGE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Desktop parity and verification](docs/PARITY.md)
+
 ## Install and record
 
 1. Install Forge 1.8.9 (`11.15.1.2318`).
