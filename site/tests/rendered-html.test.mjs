@@ -251,3 +251,19 @@ test("ships the verified Forge JAR and no starter preview", async () => {
     assert.match(source, /\/download/);
   }
 });
+
+test("insets the briefs divider below the three-column requirements bar", async () => {
+  const css = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    css,
+    /\.briefs article \+ article::before\s*\{[^}]*top:\s*clamp\(2rem,\s*5vw,\s*4rem\);[^}]*bottom:\s*clamp\(2rem,\s*5vw,\s*4rem\);/s,
+  );
+  assert.match(
+    css,
+    /@media \(max-width:\s*760px\)[\s\S]*?\.briefs article \+ article::before\s*\{[^}]*display:\s*none;/,
+  );
+});

@@ -499,7 +499,18 @@ summary:focus-visible {
 }
 
 .briefs article + article {
-  border-left: 1px solid var(--ink);
+  border-left: 0;
+}
+
+.briefs article + article::before {
+  position: absolute;
+  top: clamp(2rem, 5vw, 4rem);
+  bottom: clamp(2rem, 5vw, 4rem);
+  left: 0;
+  width: 1px;
+  content: "";
+  background: var(--ink);
+  pointer-events: none;
 }
 
 .section-number {
@@ -2087,6 +2098,10 @@ summary:focus-visible {
 
   .briefs article + article {
     border-top: 1px solid var(--ink);
+  }
+
+  .briefs article + article::before {
+    display: none;
   }
 
   .link-desk {
