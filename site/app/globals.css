@@ -924,6 +924,34 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.release-facts > .release-fingerprint-row {
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  padding-block: 0.85rem;
+}
+
+.release-fingerprint-row dd {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.release-fingerprint-row code {
+  display: block;
+  width: 100%;
+  padding: 0.62rem 0.7rem;
+  line-height: 1.45;
+  letter-spacing: 0.035em;
+  word-break: break-all;
+  border: 1px solid #b9b4a9;
+  background: #fffef8;
+  box-shadow: inset 1px 1px 2px rgba(23, 32, 51, 0.08);
+}
+
+.release-fingerprint-note {
+  color: var(--muted);
+  font: 0.68rem/1.45 var(--serif);
+}
+
 .hash-help {
   margin-top: 1rem;
   border: 1px solid #aaa598;

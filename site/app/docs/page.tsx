@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { COMMUNITY_DISCORD } from "../links";
+import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
 export const metadata: Metadata = {
@@ -214,28 +214,7 @@ export default function DocsPage() {
         </div>
       </main>
 
-      <footer className="site-footer">
-        <p>
-          Unofficial Forge 1.8.9 port · Original Record-able by
-          Minewind&apos;s Jo Eusebe · Credit where it is due.
-        </p>
-        <nav aria-label="Project links">
-          <a
-            href="https://github.com/JoEusebe/record-able"
-            rel="noreferrer"
-            target="_blank"
-          >
-            Original source
-          </a>
-          <a
-            href={COMMUNITY_DISCORD}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Discord
-          </a>
-        </nav>
-      </footer>
+      <SiteFooter />
     </WindowShell>
   );
 }

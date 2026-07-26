@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  BAGUETTE_MAP,
-  COMMUNITY_DISCORD,
-  PORT_REPOSITORY,
-} from "./links";
+import { PORT_REPOSITORY } from "./links";
+import { SiteFooter } from "./site-footer";
 import { WindowShell } from "./window-shell";
 
 export const metadata: Metadata = {
@@ -179,35 +176,7 @@ export default function Home() {
 
       </main>
 
-      <footer className="site-footer">
-        <p>
-          record-ish is unofficial · Original Record-able by Minewind&apos;s Jo
-          Eusebe · Port maintained by ErDreiwen · MIT licensed
-        </p>
-        <nav aria-label="Social links">
-          <a
-            href={PORT_REPOSITORY}
-            rel="noreferrer"
-            target="_blank"
-          >
-            GitHub
-          </a>
-          <a
-            href={BAGUETTE_MAP}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Baguette?
-          </a>
-          <a
-            href={COMMUNITY_DISCORD}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Discord
-          </a>
-        </nav>
-      </footer>
+      <SiteFooter />
     </WindowShell>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
 export const metadata: Metadata = {
@@ -292,6 +293,7 @@ export default function FaqPage() {
           </Link>
         </div>
       </main>
+      <SiteFooter />
     </WindowShell>
   );
 }

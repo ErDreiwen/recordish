@@ -120,6 +120,8 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /Java[\s\S]*8/);
   assert.match(html, /File fingerprint \(SHA-256\)/);
   assert.match(html, /SHA-256 is the JAR(?:&#x27;|')s file fingerprint/);
+  assert.match(html, /class="release-fingerprint-row"/);
+  assert.match(html, /SHA-256 is just the name of the fingerprint check/);
   assert.match(html, new RegExp(expectedChecksum));
   assert.match(
     html,

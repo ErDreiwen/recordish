@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { COMMUNITY_DISCORD, PORT_REPOSITORY } from "../links";
 import { CHECKSUM_PATH, DOWNLOAD_PATH, RELEASE } from "../release";
+import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
 export const metadata: Metadata = {
@@ -147,10 +147,14 @@ export default function DownloadPage() {
                 <dt>Size</dt>
                 <dd>{RELEASE.fileSize}</dd>
               </div>
-              <div>
+              <div className="release-fingerprint-row">
                 <dt>File fingerprint (SHA-256)</dt>
                 <dd>
                   <code>{RELEASE.sha256}</code>
+                  <small className="release-fingerprint-note">
+                    SHA-256 is just the name of the fingerprint check. Ignore
+                    it unless you want to verify the download.
+                  </small>
                 </dd>
               </div>
             </dl>
@@ -198,29 +202,7 @@ export default function DownloadPage() {
         </section>
       </main>
 
-      <footer className="site-footer">
-        <p>
-          record-ish is unofficial · Original Record-able by Minewind&apos;s Jo
-          Eusebe · Port maintained by ErDreiwen · MIT licensed
-        </p>
-        <nav aria-label="Download page links">
-          <Link href="/docs">Docs</Link>
-          <a
-            href={PORT_REPOSITORY}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Source
-          </a>
-          <a
-            href={COMMUNITY_DISCORD}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Discord
-          </a>
-        </nav>
-      </footer>
+      <SiteFooter />
     </WindowShell>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 import { ReportBuilder } from "./report-builder";
 
@@ -31,6 +32,7 @@ export default function ReportPage() {
 
         <ReportBuilder />
       </main>
+      <SiteFooter />
     </WindowShell>
   );
 }
