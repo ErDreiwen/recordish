@@ -152,8 +152,15 @@ export default function Home() {
             </a>
           </nav>
           <p className="fork-status">
-            The public fork is not live yet. We say that here instead of
-            sending you to a dead link.
+            The Forge 1.8.9 fork is live on{" "}
+            <a
+              href="https://github.com/ErDreiwen/record-able/tree/forge-1.8.9"
+              rel="noreferrer"
+              target="_blank"
+            >
+              GitHub
+            </a>
+            . Original credit remains with Jo Eusebe.
           </p>
         </section>
 

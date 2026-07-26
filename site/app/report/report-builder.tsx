@@ -694,9 +694,9 @@ export function ReportBuilder() {
           <h3>Take it to Discord for now.</h3>
           {report.project === "community" ? (
             <p>
-              The record-ish public issue tracker is not live yet.
-              Copy or save the report, then take it to the official Record-able
-              Discord. It will not send itself, and this page uploads nothing.
+              Copy or save the report, then open an issue on the record-ish
+              fork or take it to the official Record-able Discord. It will not
+              send itself, and this page uploads nothing.
             </p>
           ) : (
             <p>
@@ -714,6 +714,16 @@ export function ReportBuilder() {
             >
               Open Discord ↗
             </a>
+            {report.project === "community" ? (
+              <a
+                className="button"
+                href="https://github.com/ErDreiwen/record-able/issues/new"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open port issue ↗
+              </a>
+            ) : null}
             {report.project === "original" ? (
               <a
                 className="button"

@@ -7,27 +7,15 @@ const expectedChecksum =
   "00D7E034DDD1E94B4E9A2B5B89C0AD09C7FE9A63E2291D4B3439A69925D6ED71";
 
 async function render(path = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set(
-    "test",
-    `${process.pid}-${Date.now()}-${path.replace(/\W/g, "")}`,
+  const route = path === "/" ? "" : path.replace(/^\/|\/$/g, "");
+  const html = await readFile(
+    new URL(`../out/${route ? `${route}/` : ""}index.html`, import.meta.url),
+    "utf8",
   );
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request(`http://recordable.test${path}`, {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+  return new Response(html, {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 test("server-renders the Manc-attitude record-ish homepage", async () => {
@@ -55,9 +43,9 @@ test("server-renders the Manc-attitude record-ish homepage", async () => {
     html,
     /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
   );
-  assert.match(html, /href="\/docs"/);
-  assert.match(html, /href="\/faq"/);
-  assert.match(html, /href="\/report"/);
+  assert.match(html, /href="\/docs\/"/);
+  assert.match(html, /href="\/faq\/"/);
+  assert.match(html, /href="\/report\/"/);
   assert.match(html, /Original source/);
   assert.match(html, /Original Record-able by/);
   assert.match(html, /unofficial as it gets and never claiming otherwise/i);
@@ -68,7 +56,11 @@ test("server-renders the Manc-attitude record-ish homepage", async () => {
   assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
   assert.match(
     html,
-    /property="og:image" content="https?:\/\/[^"]+\/og-record-ish\.png"/,
+    /property="og:image" content="https:\/\/kmsi\.me\/og-record-ish\.png"/,
+  );
+  assert.match(
+    html,
+    /https:\/\/github\.com\/ErDreiwen\/record-able\/tree\/forge-1\.8\.9/,
   );
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -94,6 +86,10 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /Generated Markdown report/);
   assert.match(html, /Copy report/);
   assert.match(html, /Save \.md/);
+  assert.match(
+    html,
+    /https:\/\/github\.com\/ErDreiwen\/record-able\/issues\/new/,
+  );
   assert.match(html, /Nothing gets uploaded here/);
   assert.match(html, /removed private information/);
   assert.match(html, /Tick the privacy box first/);
@@ -114,7 +110,7 @@ test("server-renders FAQs for the original mod and record-ish port", async () =>
   assert.match(html, /Does it work in Prism and Lunar Launcher/);
   assert.match(html, /How do I report a port, UI, or website issue/);
   assert.match(html, /uploads nothing/i);
-  assert.match(html, /href="\/report"/);
+  assert.match(html, /href="\/report\/"/);
 });
 
 test("server-renders concise installation and usage docs", async () => {

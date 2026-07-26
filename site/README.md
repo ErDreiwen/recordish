@@ -23,4 +23,8 @@ The downloadable release is stored at
 `public/downloads/recordable-1.0.0-forge-1.8.9.jar`. Replace that file and the
 displayed SHA-256 checksum together when publishing a new release.
 
-The public ErDreiwen fork is not linked until its GitHub repository exists.
+The production site is a static Next.js export hosted by Vercel at
+`https://kmsi.me`. Vercel should use `site` as the project root.
+
+The Forge 1.8.9 branch is published at
+`https://github.com/ErDreiwen/record-able/tree/forge-1.8.9`.

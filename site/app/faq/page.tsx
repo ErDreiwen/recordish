@@ -191,8 +191,8 @@ const communityFaqs: Faq[] = [
     answer: (
       <p>
         Use the guided <Link href="/report">Report Center</Link>. It prepares a
-        complete Markdown report that you can copy or download. Until the
-        public fork exists, share it through the linked community channel.
+        complete Markdown report that you can copy or download, then hand to
+        the port&apos;s GitHub issue tracker or the linked community channel.
       </p>
     ),
   },
