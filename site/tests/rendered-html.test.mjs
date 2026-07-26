@@ -197,6 +197,10 @@ test("server-renders concise installation and usage docs", async () => {
   assert.match(html, /Download FFmpeg/);
   assert.match(html, /branded Lunar\/Ichor/);
   assert.match(html, /When it has gone a bit wrong/);
+  assert.match(
+    html,
+    /class="troubleshooting-question-mark"[^>]*>\?<\/span>/,
+  );
   assert.match(html, /href="\/download\/"/);
   assert.doesNotMatch(
     html,

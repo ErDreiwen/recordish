@@ -195,6 +195,12 @@ export default function DocsPage() {
               warm up. Automatic clips also need Auto-Clipping and at least one
               trigger enabled.
             </p>
+            <span
+              aria-hidden="true"
+              className="troubleshooting-question-mark"
+            >
+              ?
+            </span>
           </section>
         </div>
 

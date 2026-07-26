@@ -1048,6 +1048,29 @@ summary:focus-visible {
   padding-right: 0;
 }
 
+#troubleshooting {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+#troubleshooting > :not(.troubleshooting-question-mark) {
+  position: relative;
+  z-index: 1;
+}
+
+.troubleshooting-question-mark {
+  position: absolute;
+  z-index: 0;
+  top: 48%;
+  right: clamp(-2.25rem, -2vw, -0.85rem);
+  color: rgba(36, 90, 168, 0.045);
+  font: 700 clamp(11rem, 24vw, 18rem) / 0.72 var(--serif);
+  pointer-events: none;
+  user-select: none;
+  transform: translateY(-50%) rotate(3deg);
+}
+
 .docs h2 {
   font-size: clamp(1.8rem, 3.5vw, 2.7rem);
 }
