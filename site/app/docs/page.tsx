@@ -8,9 +8,6 @@ export const metadata: Metadata = {
     "Install record-ish, get FFmpeg behaving, and fix the usual Forge 1.8.9 nonsense without the corporate waffle.",
 };
 
-const DOWNLOAD_PATH =
-  "/downloads/recordable-1.0.0-forge-1.8.9.jar";
-
 export default function DocsPage() {
   return (
     <WindowShell>
@@ -26,9 +23,9 @@ export default function DocsPage() {
               ten-minute intro.
             </p>
           </div>
-          <a className="button button-primary" href={DOWNLOAD_PATH} download>
+          <Link className="button button-primary" href="/download">
             Get the JAR
-          </a>
+          </Link>
         </header>
 
         <nav className="docs-index" aria-label="Documentation sections">
@@ -204,9 +201,9 @@ export default function DocsPage() {
           <Link className="button" href="/">
             Back home
           </Link>
-          <a className="button button-primary" href={DOWNLOAD_PATH} download>
+          <Link className="button button-primary" href="/download">
             Get record-ish
-          </a>
+          </Link>
         </div>
       </main>
 

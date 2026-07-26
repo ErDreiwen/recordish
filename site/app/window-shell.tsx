@@ -22,7 +22,7 @@ export function WindowShell({ children }: { children: ReactNode }) {
           <Link href="/docs">Docs</Link>
           <Link href="/faq">FAQ</Link>
           <Link href="/report">Report a problem</Link>
-          <a href="/downloads/recordable-1.0.0-forge-1.8.9.jar">Download</a>
+          <Link href="/download">Download</Link>
         </nav>
         <div className="window-content">{children}</div>
         <div className="status-bar" aria-hidden="true">

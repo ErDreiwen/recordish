@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RELEASE } from "./release";
 import { WindowShell } from "./window-shell";
-
-const DOWNLOAD_PATH =
-  "/downloads/recordable-1.0.0-forge-1.8.9.jar";
-const CHECKSUM =
-  "00D7E034DDD1E94B4E9A2B5B89C0AD09C7FE9A63E2291D4B3439A69925D6ED71";
 
 export const metadata: Metadata = {
   title: {
@@ -56,9 +52,9 @@ export default function Home() {
             </p>
 
             <div className="hero-actions" aria-label="Primary actions">
-              <a className="button button-primary" href={DOWNLOAD_PATH} download>
+              <Link className="button button-primary" href="/download">
                 Get the JAR
-              </a>
+              </Link>
               <Link className="button" href="/docs">
                 Read this first
               </Link>
@@ -121,11 +117,11 @@ export default function Home() {
             <h2 id="links-title">Right. Get on with it.</h2>
           </div>
           <nav className="file-links" aria-label="Project files">
-            <a href={DOWNLOAD_PATH} download>
+            <Link href="/download">
               <span>01</span>
-              Get the JAR
-              <small>Forge 1.8.9 JAR</small>
-            </a>
+              Download
+              <small>One JAR. Try not to lose it.</small>
+            </Link>
             <Link href="/docs">
               <span>02</span>
               Docs
@@ -180,7 +176,7 @@ export default function Home() {
 
         <section className="checksum" aria-labelledby="checksum-title">
           <span id="checksum-title">SHA-256</span>
-          <code>{CHECKSUM}</code>
+          <code>{RELEASE.sha256}</code>
         </section>
       </main>
 

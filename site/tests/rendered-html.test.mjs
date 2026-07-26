@@ -39,7 +39,8 @@ test("server-renders the Manc-attitude record-ish homepage", async () => {
   assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
   assert.match(html, /Java[\s\S]*8/);
-  assert.match(
+  assert.match(html, /href="\/download\/"/);
+  assert.doesNotMatch(
     html,
     /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
   );
@@ -100,6 +101,42 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
 });
 
+test("server-renders one verified, pissy download page", async () => {
+  const response = await render("/download");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Download .* record-ish/i);
+  assert.match(html, /ONE FILE \/ NO INSTALLER \/ NO BOLLOCKS/);
+  assert.match(html, /Download the bloody thing\./);
+  assert.match(
+    html,
+    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
+  );
+  assert.match(html, /download="recordable-1\.0\.0-forge-1\.8\.9\.jar"/);
+  assert.match(html, /recordable-1\.0\.0-forge-1\.8\.9\.jar/);
+  assert.match(html, /1\.68 MiB/);
+  assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
+  assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
+  assert.match(html, /Java[\s\S]*8/);
+  assert.match(html, new RegExp(expectedChecksum));
+  assert.match(
+    html,
+    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar\.sha256"/,
+  );
+  assert.match(html, /Do not double-click it\./);
+  assert.match(html, /Vanilla\/Forge/);
+  assert.match(html, /Branded Lunar\/Ichor/);
+  assert.match(html, /FFmpeg is not bundled/);
+  assert.match(html, /href="\/docs\/#lunar"/);
+  assert.match(html, /https:\/\/modrinth\.com\/mod\/record-able/);
+  assert.match(
+    html,
+    /https:\/\/github\.com\/ErDreiwen\/record-able\/tree\/forge-1\.8\.9/,
+  );
+  assert.match(html, /MIT licensed/);
+});
+
 test("keeps the technical report and sends original-mod complaints upstream", async () => {
   const [builder, css] = await Promise.all([
     readFile(
@@ -155,6 +192,11 @@ test("server-renders concise installation and usage docs", async () => {
   assert.match(html, /Download FFmpeg/);
   assert.match(html, /branded Lunar\/Ichor/);
   assert.match(html, /When it has gone a bit wrong/);
+  assert.match(html, /href="\/download\/"/);
+  assert.doesNotMatch(
+    html,
+    /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
+  );
 });
 
 test("ships the verified Forge JAR and no starter preview", async () => {
@@ -164,12 +206,26 @@ test("ships the verified Forge JAR and no starter preview", async () => {
   );
   const bytes = await readFile(jar);
   const checksum = createHash("sha256").update(bytes).digest("hex").toUpperCase();
+  const checksumFile = await readFile(
+    new URL(
+      "../public/downloads/recordable-1.0.0-forge-1.8.9.jar.sha256",
+      import.meta.url,
+    ),
+    "utf8",
+  );
 
   assert.equal(checksum, expectedChecksum);
+  assert.equal(bytes.byteLength, 1765821);
+  assert.equal(
+    checksumFile.trim(),
+    `${expectedChecksum}  recordable-1.0.0-forge-1.8.9.jar`,
+  );
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
 
-  const [page, layout, packageJson] = await Promise.all([
+  const [page, docs, windowShell, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/docs/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/window-shell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
@@ -178,4 +234,11 @@ test("ships the verified Forge JAR and no starter preview", async () => {
   assert.doesNotMatch(layout, /Starter Project|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /"name": "recordable-forge-site"/);
+  for (const source of [page, docs, windowShell]) {
+    assert.doesNotMatch(
+      source,
+      /\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar/,
+    );
+    assert.match(source, /\/download/);
+  }
 });
