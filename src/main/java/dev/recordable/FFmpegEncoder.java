@@ -100,9 +100,11 @@ public final class FFmpegEncoder {
 
         Path outputDirectory = config.getOutputDirectory();
         Files.createDirectories(outputDirectory);
-        String stem = "recordable-"
-                + (filePrefix.isEmpty() ? "" : filePrefix + "-")
-                + FILE_TIME.format(LocalDateTime.now());
+        String stem = filePrefix.isEmpty()
+                ? RecordableConfig.resolveFilenamePattern(
+                        config.filenamePattern)
+                : "recordable-" + filePrefix + "-"
+                        + FILE_TIME.format(LocalDateTime.now());
         requestedOutput = uniquePath(outputDirectory, stem, config.getFormat());
         temporaryVideo = uniquePath(outputDirectory, stem + ".video", "mkv");
 
@@ -507,7 +509,7 @@ public final class FFmpegEncoder {
 
     private static Path uniquePath(Path directory, String stem, String extension) {
         Path candidate = directory.resolve(stem + "." + extension);
-        int suffix = 2;
+        int suffix = 1;
         while (Files.exists(candidate)) {
             candidate = directory.resolve(stem + "-" + suffix++ + "." + extension);
         }

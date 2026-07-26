@@ -49,6 +49,10 @@ public final class FfmpegBundleManager {
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 30000;
     private static final int BUFFER_SIZE = 64 * 1024;
+    private static final long MAX_ARCHIVE_SIZE =
+        512L * 1024L * 1024L;
+    private static final long MAX_BINARY_SIZE =
+        300L * 1024L * 1024L;
 
     public enum Status {
         NOT_FOUND, CHECKING, DOWNLOADING, AVAILABLE, ERROR
@@ -148,6 +152,11 @@ public final class FfmpegBundleManager {
             .resolve("recordable").resolve("ffmpeg").resolve("bin");
     }
 
+    public static Path getManagedExecutablePath() {
+        return getBundleDirectory()
+            .resolve(PlatformUtils.executableName("ffmpeg"));
+    }
+
     public static synchronized FfmpegStatus detectFfmpeg() {
         RecordableConfig config = RecordableConfig.get();
         List<String> candidates = new ArrayList<String>();
@@ -173,9 +182,15 @@ public final class FfmpegBundleManager {
             ENCODER_PREFLIGHT.clear();
         }
         STATUS.set(Status.CHECKING);
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Starting executable probe across {} candidate(s).",
+            candidates.size());
 
         StringBuilder failures = new StringBuilder();
         for (String candidate : candidates) {
+            RecordableMod.LOGGER.info(
+                "[FFmpeg] Invoking probe: {} -hide_banner -version",
+                candidate);
             FfmpegStatus result = probe(candidate);
             if (result.isFound()) {
                 cachedStatus = result;
@@ -183,9 +198,17 @@ public final class FfmpegBundleManager {
                 if (!"ffmpeg".equals(candidate)) {
                     config.bundledFfmpegPath = candidate;
                 }
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Probe succeeded: executable='{}', version='{}'.",
+                    candidate,
+                    result.getVersion());
                 return result;
             }
             if (result.getError() != null) {
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Probe did not find a usable executable at '{}': {}",
+                    candidate,
+                    result.getError());
                 if (failures.length() > 0) failures.append("; ");
                 failures.append(candidate).append(": ").append(result.getError());
             }
@@ -194,6 +217,9 @@ public final class FfmpegBundleManager {
         lastError = failures.length() == 0 ? "FFmpeg was not found." : failures.toString();
         cachedStatus = new FfmpegStatus(false, null, null, lastError);
         STATUS.set(Status.NOT_FOUND);
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Executable probe completed without finding FFmpeg: {}",
+            lastError);
         return cachedStatus;
     }
 
@@ -299,31 +325,83 @@ public final class FfmpegBundleManager {
 
     public static boolean isAutoDownloadSupported() {
         PlatformUtils.Platform platform = PlatformUtils.detectPlatform();
-        return platform == PlatformUtils.Platform.WINDOWS
-            || platform == PlatformUtils.Platform.LINUX
-            || platform == PlatformUtils.Platform.MACOS;
+        return isX86_64()
+            && (platform == PlatformUtils.Platform.WINDOWS
+                || platform == PlatformUtils.Platform.LINUX
+                || platform == PlatformUtils.Platform.MACOS);
     }
 
     public static String getDownloadSourceDescription() {
         switch (PlatformUtils.detectPlatform()) {
             case WINDOWS:
-                return "gyan.dev FFmpeg release essentials";
+                return "gyan.dev FFmpeg release essentials (Windows x64)";
             case LINUX:
-                return "johnvansickle.com static FFmpeg";
+                return "johnvansickle.com static FFmpeg (Linux x64)";
             case MACOS:
-                return "evermeet.cx static FFmpeg";
+                return "evermeet.cx static FFmpeg (macOS Intel)";
             default:
                 return "unsupported platform";
         }
     }
 
+    public static String getEstimatedDownloadSize() {
+        switch (PlatformUtils.detectPlatform()) {
+            case WINDOWS:
+                return "~103 MB";
+            case LINUX:
+            case MACOS:
+                return "~80 MB";
+            default:
+                return "n/a";
+        }
+    }
+
+    /**
+     * Plain-text manual installation guidance used by the V1-0.09 welcome and
+     * setup screens.
+     */
+    public static String getManualInstallInstructions() {
+        switch (PlatformUtils.detectPlatform()) {
+            case WINDOWS:
+                return "Manual install: download "
+                    + "ffmpeg-release-essentials.zip from "
+                    + "https://www.gyan.dev/ffmpeg/builds/ and extract "
+                    + "ffmpeg.exe to " + getBundleDirectory() + ".";
+            case LINUX:
+                return "Manual install: use your distribution package "
+                    + "manager, or download a static build from "
+                    + "https://johnvansickle.com/ffmpeg/ and place "
+                    + "'ffmpeg' at " + getBundleDirectory() + ".";
+            case MACOS:
+                return "Manual install: run 'brew install ffmpeg', or "
+                    + "download from https://evermeet.cx/ffmpeg/ and place "
+                    + "'ffmpeg' at " + getBundleDirectory() + ".";
+            default:
+                return "Install FFmpeg from https://ffmpeg.org/ and add it "
+                    + "to PATH, or configure its executable path manually.";
+        }
+    }
+
     public static CompletableFuture<Boolean> downloadAsync() {
+        PlatformUtils.Platform platform = PlatformUtils.detectPlatform();
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Explicit download invocation: platform={}, source='{}', destination='{}'.",
+            platform.getDisplayName(),
+            getDownloadSourceDescription(),
+            getBundleDirectory());
         if (!isAutoDownloadSupported()) {
-            lastError = "Automatic FFmpeg download is not supported on this operating system.";
+            lastError = "Automatic FFmpeg download is not supported on "
+                + platform.getDisplayName()
+                + " / " + System.getProperty("os.arch", "unknown architecture")
+                + ". Install FFmpeg manually, then set Custom FFmpeg in "
+                + "Record-able's Storage settings.";
             STATUS.set(Status.ERROR);
+            RecordableMod.LOGGER.error("[FFmpeg] {}", lastError);
             return CompletableFuture.completedFuture(false);
         }
         if (!DOWNLOADING.compareAndSet(false, true)) {
+            RecordableMod.LOGGER.info(
+                "[FFmpeg] A download is already in progress; the duplicate request was ignored.");
             return CompletableFuture.completedFuture(false);
         }
         STATUS.set(Status.DOWNLOADING);
@@ -331,21 +409,34 @@ public final class FfmpegBundleManager {
         fireProgress("starting", 0L, 0L);
         return CompletableFuture.supplyAsync(() -> {
             try {
-                installForCurrentPlatform();
-                invalidateCache();
-                FfmpegStatus detected = detectFfmpeg();
-                if (!detected.isFound()) {
-                    throw new IOException("FFmpeg was extracted but could not be executed.");
+                FfmpegStatus detected = installForCurrentPlatform(
+                    getBundleDirectory());
+                synchronized (FfmpegBundleManager.class) {
+                    cachedStatus = detected;
+                    ENCODER_PREFLIGHT.clear();
                 }
                 fireProgress("done", 1L, 1L);
                 STATUS.set(Status.AVAILABLE);
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Download, extraction, and probe succeeded. "
+                        + "FFmpeg is ready at '{}' ({}).",
+                    detected.getExecutable(),
+                    detected.getVersion());
                 return true;
             } catch (Exception exception) {
-                lastError = exception.getMessage() == null
+                String failedPhase = progress.getPhase();
+                String detail = exception.getMessage() == null
                     ? exception.getClass().getSimpleName() : exception.getMessage();
+                lastError = detail
+                    + " Retry the download, or set a working executable in "
+                    + "Storage > Custom FFmpeg.";
                 STATUS.set(Status.ERROR);
                 fireProgress("error", 0L, 0L);
-                RecordableMod.LOGGER.error("FFmpeg download failed.", exception);
+                RecordableMod.LOGGER.error(
+                    "[FFmpeg] Download/install failed during phase '{}': {}",
+                    failedPhase,
+                    lastError,
+                    exception);
                 return false;
             } finally {
                 DOWNLOADING.set(false);
@@ -353,41 +444,121 @@ public final class FfmpegBundleManager {
         });
     }
 
-    private static void installForCurrentPlatform() throws IOException {
-        Path destination = getBundleDirectory();
-        Files.createDirectories(destination);
-        Path temporary = Files.createTempDirectory("recordable-ffmpeg-");
+    static FfmpegStatus installForCurrentPlatform(Path destination)
+            throws IOException {
+        if (destination == null) {
+            throw new IOException(
+                "FFmpeg installation destination is unavailable.");
+        }
+        destination = destination.toAbsolutePath().normalize();
+        Files.createDirectories(destination.getParent());
+        Path temporary = Files.createTempDirectory(
+            destination.getParent(),
+            ".recordable-install-");
+        Path staged = temporary.resolve("staged-bin");
+        Files.createDirectories(staged);
+        boolean preserveTemporary = false;
         try {
             PlatformUtils.Platform platform = PlatformUtils.detectPlatform();
+            RecordableMod.LOGGER.info(
+                "[FFmpeg] Selected source '{}' ({}) for {}.",
+                getDownloadSourceDescription(),
+                sourceUrl(platform),
+                platform.getDisplayName());
             if (platform == PlatformUtils.Platform.WINDOWS) {
                 Path archive = temporary.resolve("ffmpeg.zip");
                 downloadFile(WINDOWS_URL, archive, "downloading");
                 verifyRemoteHash(archive, WINDOWS_HASH_URL, "SHA-256");
-                extractZipBinaries(archive, destination);
+                fireProgress("extracting", 0L, 0L);
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Extracting Windows archive '{}' into '{}'.",
+                    archive,
+                    staged);
+                extractZipBinaries(archive, staged);
             } else if (platform == PlatformUtils.Platform.MACOS) {
                 Path archive = temporary.resolve("ffmpeg.zip");
                 downloadFile(MAC_URL, archive, "downloading");
-                extractZipBinaries(archive, destination);
-                markExecutables(destination);
+                fireProgress("extracting", 0L, 0L);
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] No upstream checksum endpoint is available for "
+                        + "the macOS source; continuing with HTTPS validation.");
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Extracting macOS archive '{}' into '{}'.",
+                    archive,
+                    staged);
+                extractZipBinaries(archive, staged);
+                markExecutables(staged);
             } else if (platform == PlatformUtils.Platform.LINUX) {
                 Path archive = temporary.resolve("ffmpeg.tar.xz");
                 downloadFile(LINUX_URL, archive, "downloading");
                 verifyRemoteHash(archive, LINUX_HASH_URL, "MD5");
-                Path extracted = temporary.resolve("extracted");
-                Files.createDirectories(extracted);
-                ProcessResult result = runCommand(asList(
-                    "tar", "-xJf", archive.toString(), "-C", extracted.toString()), 120);
-                if (result.exitCode != 0) {
-                    throw new IOException("Unable to extract FFmpeg: " + result.output);
-                }
-                copyFoundBinary(extracted, destination, "ffmpeg");
-                copyFoundBinary(extracted, destination, "ffprobe");
-                markExecutables(destination);
+                fireProgress("extracting", 0L, 0L);
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Extracting validated Linux binaries from '{}' into '{}'.",
+                    archive,
+                    staged);
+                extractLinuxBinaries(archive, staged);
+                markExecutables(staged);
             } else {
                 throw new IOException("Unsupported operating system.");
             }
+
+            validateStagedInstallation(staged);
+            PublishTransaction transaction;
+            try {
+                transaction = publishStagedBinaries(
+                    staged,
+                    destination,
+                    temporary.resolve("backup-bin"));
+            } catch (RollbackFailedException rollbackFailure) {
+                preserveTemporary = true;
+                throw rollbackFailure;
+            }
+            try {
+                fireProgress("probing", 0L, 0L);
+                Path installedExecutable = destination.resolve(
+                    PlatformUtils.executableName("ffmpeg"));
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Probing the published executable at '{}'.",
+                    installedExecutable);
+                FfmpegStatus detected = probe(
+                    installedExecutable.toString());
+                if (!detected.isFound()) {
+                    throw new IOException(
+                        "FFmpeg was published but could not be executed. "
+                            + "Check antivirus or file permissions, then "
+                            + "retry.");
+                }
+                RecordableMod.LOGGER.info(
+                    "[FFmpeg] Validated installation was published to '{}' "
+                        + "and passed its live probe.",
+                    destination);
+                return detected;
+            } catch (IOException liveProbeFailure) {
+                try {
+                    transaction.rollback();
+                } catch (IOException rollbackFailure) {
+                    preserveTemporary = true;
+                    IOException recoveryFailure = new IOException(
+                        liveProbeFailure.getMessage()
+                            + " Restoring the previous installation also "
+                            + "failed; its backup was preserved at "
+                            + temporary.resolve("backup-bin") + ".",
+                        liveProbeFailure);
+                    recoveryFailure.addSuppressed(rollbackFailure);
+                    throw recoveryFailure;
+                }
+                throw liveProbeFailure;
+            }
         } finally {
-            deleteRecursively(temporary);
+            if (preserveTemporary) {
+                RecordableMod.LOGGER.error(
+                    "[FFmpeg] Installer recovery was incomplete. Preserving "
+                        + "the recovery directory at '{}'.",
+                    temporary);
+            } else {
+                deleteRecursively(temporary);
+            }
         }
     }
 
@@ -398,10 +569,23 @@ public final class FfmpegBundleManager {
         connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", "Record-able-Forge-1.8.9/1.0");
         int code = connection.getResponseCode();
+        long total = connection.getContentLengthLong();
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] HTTP {} from '{}' (declared size: {}).",
+            code,
+            connection.getURL(),
+            describeBytes(total));
         if (code < 200 || code >= 300) {
+            connection.disconnect();
             throw new IOException("Download returned HTTP " + code + " from " + source);
         }
-        long total = connection.getContentLengthLong();
+        if (total > MAX_ARCHIVE_SIZE) {
+            connection.disconnect();
+            throw new IOException(
+                "FFmpeg archive is larger than the "
+                    + describeBytes(MAX_ARCHIVE_SIZE)
+                    + " safety limit.");
+        }
         long count = 0L;
         Files.createDirectories(destination.getParent());
         try (InputStream input = new BufferedInputStream(connection.getInputStream());
@@ -412,46 +596,91 @@ public final class FfmpegBundleManager {
                 if (read == 0) continue;
                 output.write(buffer, 0, read);
                 count += read;
+                if (count > MAX_ARCHIVE_SIZE) {
+                    throw new IOException(
+                        "FFmpeg archive exceeded the "
+                            + describeBytes(MAX_ARCHIVE_SIZE)
+                            + " safety limit while downloading.");
+                }
                 fireProgress(phase, count, total);
             }
         } finally {
             connection.disconnect();
         }
+        if (total > 0L && count != total) {
+            throw new IOException(
+                "FFmpeg download ended early: expected " + total
+                    + " bytes but received " + count + " bytes.");
+        }
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Download complete: received {} and saved archive to '{}'.",
+            describeBytes(count),
+            destination);
     }
 
     private static void verifyRemoteHash(Path archive, String hashUrl, String algorithm) throws IOException {
+        fireProgress("checksum", 0L, 0L);
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Retrieving {} checksum from '{}'.",
+            algorithm,
+            hashUrl);
         String expected;
         try {
             expected = downloadSmallText(hashUrl);
         } catch (IOException exception) {
-            RecordableMod.LOGGER.warn("Unable to retrieve FFmpeg checksum; HTTPS validation remains active.");
-            return;
+            throw new IOException(
+                "Unable to retrieve the required upstream " + algorithm
+                    + " checksum from " + hashUrl + ".",
+                exception);
         }
         int length = "MD5".equalsIgnoreCase(algorithm) ? 32 : 64;
         java.util.regex.Matcher matcher =
             PatternHolder.hex(length).matcher(expected.toLowerCase(Locale.ROOT));
         if (!matcher.find()) {
-            RecordableMod.LOGGER.warn("FFmpeg checksum response did not contain a usable {} hash.", algorithm);
-            return;
+            throw new IOException(
+                "The checksum response from " + hashUrl
+                    + " did not contain a usable " + algorithm + " hash.");
         }
+        String expectedHash = matcher.group();
         String actual = computeHash(archive, algorithm);
-        if (!matcher.group().equalsIgnoreCase(actual)) {
-            throw new IOException("FFmpeg " + algorithm + " checksum mismatch.");
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Computed {} checksum for '{}': {}.",
+            algorithm,
+            archive,
+            actual);
+        if (!expectedHash.equalsIgnoreCase(actual)) {
+            throw new IOException(
+                "FFmpeg " + algorithm + " checksum mismatch (expected "
+                    + expectedHash + ", received " + actual + ").");
         }
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] {} checksum verified successfully against the upstream value.",
+            algorithm);
     }
 
     private static String downloadSmallText(String source) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(source).openConnection();
         connection.setConnectTimeout(CONNECT_TIMEOUT);
         connection.setReadTimeout(READ_TIMEOUT);
+        connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", "Record-able-Forge-1.8.9/1.0");
+        int code = connection.getResponseCode();
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Checksum endpoint returned HTTP {} from '{}'.",
+            code,
+            connection.getURL());
+        if (code < 200 || code >= 300) {
+            connection.disconnect();
+            throw new IOException(
+                "Checksum request returned HTTP " + code + " from " + source);
+        }
         try (InputStream input = connection.getInputStream();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[4096];
-            int read;
-            while ((read = input.read(buffer)) >= 0 && output.size() < 65536) {
-                output.write(buffer, 0, read);
-            }
+            copyLimited(
+                input,
+                output,
+                64L * 1024L,
+                "checksum response");
             return new String(output.toByteArray(), StandardCharsets.UTF_8);
         } finally {
             connection.disconnect();
@@ -478,6 +707,7 @@ public final class FfmpegBundleManager {
 
     private static void extractZipBinaries(Path archive, Path destination) throws IOException {
         boolean foundFfmpeg = false;
+        List<String> installed = new ArrayList<String>();
         try (ZipInputStream zip = new ZipInputStream(
                 new BufferedInputStream(Files.newInputStream(archive)))) {
             ZipEntry entry;
@@ -495,17 +725,460 @@ public final class FfmpegBundleManager {
                 if (!target.getParent().equals(destination.normalize())) {
                     throw new IOException("Unsafe path in FFmpeg archive.");
                 }
-                Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
+                if (entry.getSize() > MAX_BINARY_SIZE) {
+                    throw new IOException(
+                        "FFmpeg archive entry is unexpectedly large: "
+                            + entry.getName());
+                }
+                try (OutputStream output = Files.newOutputStream(target)) {
+                    copyLimited(
+                        zip,
+                        output,
+                        MAX_BINARY_SIZE,
+                        entry.getName());
+                }
+                installed.add(target.toString());
                 if (filename.toLowerCase(Locale.ROOT).startsWith("ffmpeg")) foundFfmpeg = true;
             }
         }
         if (!foundFfmpeg) throw new IOException("FFmpeg executable was not present in the archive.");
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Extracted {} executable file(s): {}",
+            installed.size(),
+            installed);
+    }
+
+    private static void extractLinuxBinaries(
+            Path archive,
+            Path destination) throws IOException {
+        ProcessResult listing = runCommand(
+            asList("tar", "-tJf", archive.toString()),
+            60);
+        if (listing.exitCode != 0) {
+            throw new IOException(
+                "Unable to inspect the FFmpeg archive: " + listing.output);
+        }
+
+        String ffmpegEntry = null;
+        String ffprobeEntry = null;
+        for (String raw : listing.output.split("\\r?\\n")) {
+            String entry = raw.trim().replace('\\', '/');
+            if (entry.isEmpty()) {
+                continue;
+            }
+            validateArchiveEntryPath(entry);
+            String filename = entry.substring(entry.lastIndexOf('/') + 1);
+            if ("ffmpeg".equals(filename) && ffmpegEntry == null) {
+                ffmpegEntry = entry;
+            } else if ("ffprobe".equals(filename)
+                    && ffprobeEntry == null) {
+                ffprobeEntry = entry;
+            }
+        }
+        if (ffmpegEntry == null) {
+            throw new IOException(
+                "FFmpeg executable was not present in the Linux archive.");
+        }
+
+        validateTarRegularEntry(archive, ffmpegEntry);
+        extractTarEntry(
+            archive,
+            ffmpegEntry,
+            destination.resolve("ffmpeg"));
+        if (ffprobeEntry != null) {
+            validateTarRegularEntry(archive, ffprobeEntry);
+            extractTarEntry(
+                archive,
+                ffprobeEntry,
+                destination.resolve("ffprobe"));
+        }
+    }
+
+    private static void validateArchiveEntryPath(String entry)
+            throws IOException {
+        if (entry.startsWith("/")
+                || entry.startsWith("\\")
+                || entry.matches("^[A-Za-z]:.*")) {
+            throw new IOException(
+                "Unsafe absolute path in FFmpeg archive: " + entry);
+        }
+        for (String part : entry.split("/")) {
+            if ("..".equals(part)) {
+                throw new IOException(
+                    "Unsafe traversal path in FFmpeg archive: " + entry);
+            }
+        }
+    }
+
+    private static void validateTarRegularEntry(
+            Path archive,
+            String entry) throws IOException {
+        ProcessResult metadata = runCommand(
+            asList(
+                "tar",
+                "-tvJf",
+                archive.toString(),
+                "--",
+                entry),
+            30);
+        if (metadata.exitCode != 0) {
+            throw new IOException(
+                "Unable to inspect archive entry '" + entry + "': "
+                    + metadata.output);
+        }
+        String line = firstLine(metadata.output);
+        if (line.isEmpty() || line.charAt(0) != '-') {
+            throw new IOException(
+                "FFmpeg archive entry is not a regular file: " + entry);
+        }
+    }
+
+    private static void extractTarEntry(
+            Path archive,
+            String entry,
+            Path target) throws IOException {
+        Files.createDirectories(target.getParent());
+        Path partial = target.resolveSibling(
+            target.getFileName().toString() + ".partial");
+        Files.deleteIfExists(partial);
+
+        Process process = null;
+        final ByteArrayOutputStream errors = new ByteArrayOutputStream();
+        Thread errorReader = null;
+        try {
+            process = new ProcessBuilder(asList(
+                "tar",
+                "-xJOf",
+                archive.toString(),
+                "--",
+                entry)).start();
+            final Process running = process;
+            errorReader = new Thread(() -> {
+                try (InputStream input = running.getErrorStream()) {
+                    byte[] buffer = new byte[4096];
+                    int read;
+                    while ((read = input.read(buffer)) >= 0) {
+                        if (read > 0) {
+                            errors.write(buffer, 0, read);
+                        }
+                    }
+                } catch (IOException ignored) {
+                }
+            }, "Recordable-TarErrorReader");
+            errorReader.setDaemon(true);
+            errorReader.start();
+
+            try (InputStream input =
+                    new BufferedInputStream(process.getInputStream());
+                 OutputStream output = Files.newOutputStream(partial)) {
+                copyLimited(
+                    input,
+                    output,
+                    MAX_BINARY_SIZE,
+                    entry);
+            }
+            if (!process.waitFor(120, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new IOException(
+                    "Timed out extracting FFmpeg archive entry: " + entry);
+            }
+            errorReader.join(1000L);
+            if (process.exitValue() != 0) {
+                throw new IOException(
+                    "Unable to extract FFmpeg archive entry '" + entry
+                        + "': "
+                        + new String(
+                            errors.toByteArray(),
+                            StandardCharsets.UTF_8));
+            }
+            validateBinaryFile(partial, entry);
+            moveReplacing(partial, target);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException(
+                "Interrupted while extracting FFmpeg archive entry: "
+                    + entry,
+                exception);
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
+            try {
+                Files.deleteIfExists(partial);
+            } catch (IOException cleanupFailure) {
+                RecordableMod.LOGGER.warn(
+                    "[FFmpeg] Could not remove partial archive entry '{}'.",
+                    partial,
+                    cleanupFailure);
+            }
+        }
+    }
+
+    private static void validateStagedInstallation(Path staged)
+            throws IOException {
+        Path executable = staged.resolve(
+            PlatformUtils.executableName("ffmpeg"));
+        validateBinaryFile(executable, "ffmpeg");
+        Path probe = staged.resolve(
+            PlatformUtils.executableName("ffprobe"));
+        if (Files.exists(probe)) {
+            validateBinaryFile(probe, "ffprobe");
+        }
+
+        fireProgress("probing", 0L, 0L);
+        FfmpegStatus status = probe(executable.toString());
+        if (!status.isFound()) {
+            throw new IOException(
+                "The downloaded FFmpeg executable failed its staged "
+                    + "self-test: " + status.getError());
+        }
+        RecordableMod.LOGGER.info(
+            "[FFmpeg] Staged executable passed its probe: {}.",
+            status.getVersion());
+    }
+
+    private static void validateBinaryFile(Path file, String label)
+            throws IOException {
+        if (!Files.isRegularFile(file) || Files.isSymbolicLink(file)) {
+            throw new IOException(
+                "FFmpeg archive entry is not a regular file: " + label);
+        }
+        long size = Files.size(file);
+        if (size <= 0L || size > MAX_BINARY_SIZE) {
+            throw new IOException(
+                "FFmpeg archive entry has an invalid size: " + label
+                    + " (" + describeBytes(size) + ").");
+        }
+    }
+
+    private static PublishTransaction publishStagedBinaries(
+            Path staged,
+            Path destination,
+            Path backupDirectory) throws IOException {
+        Files.createDirectories(destination);
+        Files.createDirectories(backupDirectory);
+
+        List<Path> sources = new ArrayList<Path>();
+        for (String name : new String[]{
+                PlatformUtils.executableName("ffmpeg"),
+                PlatformUtils.executableName("ffprobe")}) {
+            Path source = staged.resolve(name);
+            if (Files.isRegularFile(source)
+                    && !Files.isSymbolicLink(source)) {
+                sources.add(source);
+            }
+        }
+
+        Map<Path, Path> backups = new HashMap<Path, Path>();
+        List<Path> published = new ArrayList<Path>();
+        PublishTransaction transaction =
+            new PublishTransaction(backups, published);
+        try {
+            for (Path source : sources) {
+                Path target = destination.resolve(source.getFileName());
+                if (Files.exists(target)) {
+                    Path backup =
+                        backupDirectory.resolve(source.getFileName());
+                    moveReplacing(target, backup);
+                    backups.put(target, backup);
+                }
+                moveReplacing(source, target);
+                published.add(target);
+            }
+        } catch (IOException publishFailure) {
+            IOException rollbackFailure = null;
+            try {
+                transaction.rollback();
+            } catch (IOException exception) {
+                rollbackFailure = exception;
+            }
+            IOException failure = new IOException(
+                "Unable to publish the validated FFmpeg installation; "
+                    + (rollbackFailure == null
+                        ? "the previous installation was restored."
+                        : "restoring the previous installation also failed."),
+                publishFailure);
+            if (rollbackFailure != null) {
+                throw new RollbackFailedException(
+                    "Unable to publish the validated FFmpeg installation, "
+                        + "and restoring the previous installation failed. "
+                        + "Its backup will be preserved at "
+                        + backupDirectory + ".",
+                    publishFailure,
+                    rollbackFailure);
+            }
+            throw failure;
+        }
+        return transaction;
+    }
+
+    private static final class RollbackFailedException
+            extends IOException {
+        private RollbackFailedException(
+                String message,
+                Throwable cause,
+                Throwable rollbackFailure) {
+            super(message, cause);
+            if (rollbackFailure != null) {
+                addSuppressed(rollbackFailure);
+            }
+        }
+    }
+
+    private static void moveReplacing(Path source, Path target)
+            throws IOException {
+        Files.createDirectories(target.getParent());
+        try {
+            Files.move(
+                source,
+                target,
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException atomicFailure) {
+            Path transfer = Files.createTempFile(
+                target.getParent(),
+                "." + target.getFileName().toString() + ".",
+                ".recordable-transfer");
+            try {
+                Files.copy(
+                    source,
+                    transfer,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.COPY_ATTRIBUTES);
+                if (Files.size(source) != Files.size(transfer)) {
+                    throw new IOException(
+                        "Transfer size mismatch while publishing "
+                            + target.getFileName() + ".");
+                }
+                try {
+                    Files.move(
+                        transfer,
+                        target,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException transferAtomicFailure) {
+                    try {
+                        Files.move(
+                            transfer,
+                            target,
+                            StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException transferFailure) {
+                        transferFailure.addSuppressed(
+                            transferAtomicFailure);
+                        throw transferFailure;
+                    }
+                }
+                try {
+                    Files.delete(source);
+                } catch (IOException cleanupFailure) {
+                    RecordableMod.LOGGER.warn(
+                        "[FFmpeg] Published '{}' but could not remove "
+                            + "the source copy '{}'.",
+                        target,
+                        source,
+                        cleanupFailure);
+                }
+            } catch (IOException transferFailure) {
+                try {
+                    Files.deleteIfExists(transfer);
+                } catch (IOException cleanupFailure) {
+                    transferFailure.addSuppressed(cleanupFailure);
+                }
+                if (transferFailure != atomicFailure) {
+                    transferFailure.addSuppressed(atomicFailure);
+                }
+                throw transferFailure;
+            }
+        }
+    }
+
+    private static final class PublishTransaction {
+        private final Map<Path, Path> backups;
+        private final List<Path> published;
+        private boolean rolledBack;
+
+        private PublishTransaction(
+                Map<Path, Path> backups,
+                List<Path> published) {
+            this.backups = backups;
+            this.published = published;
+        }
+
+        private void rollback() throws IOException {
+            if (rolledBack) {
+                return;
+            }
+            rolledBack = true;
+            IOException failure = null;
+            for (Path target : published) {
+                if (!backups.containsKey(target)) {
+                    try {
+                        Files.deleteIfExists(target);
+                    } catch (IOException exception) {
+                        if (failure == null) {
+                            failure = exception;
+                        } else {
+                            failure.addSuppressed(exception);
+                        }
+                    }
+                }
+            }
+            for (Map.Entry<Path, Path> backup : backups.entrySet()) {
+                try {
+                    if (Files.exists(backup.getValue())) {
+                        moveReplacing(
+                            backup.getValue(),
+                            backup.getKey());
+                    }
+                } catch (IOException exception) {
+                    if (failure == null) {
+                        failure = exception;
+                    } else {
+                        failure.addSuppressed(exception);
+                    }
+                }
+            }
+            if (failure != null) {
+                throw new IOException(
+                    "The previous FFmpeg installation could not be fully "
+                        + "restored.",
+                    failure);
+            }
+        }
+    }
+
+    private static long copyLimited(
+            InputStream input,
+            OutputStream output,
+            long maximumBytes,
+            String label) throws IOException {
+        long count = 0L;
+        byte[] buffer = new byte[BUFFER_SIZE];
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            count += read;
+            if (count > maximumBytes) {
+                throw new IOException(
+                    "FFmpeg archive entry exceeds the safety limit: "
+                        + label);
+            }
+            output.write(buffer, 0, read);
+        }
+        return count;
     }
 
     private static void copyFoundBinary(Path root, Path destination, String name) throws IOException {
         Path found = findFile(root, name);
         if (found != null) {
-            Files.copy(found, destination.resolve(name), StandardCopyOption.REPLACE_EXISTING);
+            Path target = destination.resolve(name);
+            Files.copy(found, target, StandardCopyOption.REPLACE_EXISTING);
+            RecordableMod.LOGGER.info(
+                "[FFmpeg] Installed extracted '{}' binary at '{}'.",
+                name,
+                target);
         } else if ("ffmpeg".equals(name)) {
             throw new IOException("FFmpeg executable was not present in the archive.");
         }
@@ -601,6 +1274,34 @@ public final class FfmpegBundleManager {
     private static String firstLine(String value) {
         int newline = value.indexOf('\n');
         return (newline < 0 ? value : value.substring(0, newline)).trim();
+    }
+
+    private static String sourceUrl(PlatformUtils.Platform platform) {
+        if (platform == PlatformUtils.Platform.WINDOWS) return WINDOWS_URL;
+        if (platform == PlatformUtils.Platform.LINUX) return LINUX_URL;
+        if (platform == PlatformUtils.Platform.MACOS) return MAC_URL;
+        return "none";
+    }
+
+    private static boolean isX86_64() {
+        String architecture = System.getProperty(
+            "os.arch",
+            "").toLowerCase(Locale.ROOT);
+        return "amd64".equals(architecture)
+            || "x86_64".equals(architecture)
+            || "x64".equals(architecture);
+    }
+
+    private static String describeBytes(long bytes) {
+        if (bytes < 0L) return "unknown";
+        if (bytes < 1024L) return bytes + " B";
+        if (bytes < 1024L * 1024L) {
+            return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0D);
+        }
+        return String.format(
+            Locale.ROOT,
+            "%.1f MB",
+            bytes / (1024.0D * 1024.0D));
     }
 
     private static void fireProgress(String phase, long downloaded, long total) {

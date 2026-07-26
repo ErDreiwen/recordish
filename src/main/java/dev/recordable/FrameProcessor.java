@@ -300,7 +300,10 @@ public final class FrameProcessor {
     private Image loadImage(String path) {
         if (path == null || path.trim().isEmpty()) return null;
         try {
-            File file = new File(path).getAbsoluteFile();
+            java.nio.file.Path resolved =
+                    WatermarkImageStore.resolve(path);
+            if (resolved == null) return null;
+            File file = resolved.toFile().getAbsoluteFile();
             if (!file.isFile()) return null;
             String key = file.getPath();
             long modified = file.lastModified();

@@ -1,7 +1,5 @@
 package dev.recordable;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
 public final class RecordableMessages {
@@ -10,11 +8,7 @@ public final class RecordableMessages {
 
     public static void send(ChatCategory category, String text) {
         if (!isEnabled(category)) return;
-        Minecraft minecraft = Minecraft.getMinecraft();
-        if (minecraft.thePlayer != null) {
-            minecraft.thePlayer.addChatMessage(new ChatComponentText(
-                EnumChatFormatting.RED + "[Record-able] " + EnumChatFormatting.RESET + text));
-        }
+        ToastQueue.push(text);
     }
 
     public static void error(String text) {

@@ -1,7 +1,10 @@
 package dev.recordable;
 
+import dev.recordable.screen.FfmpegWelcomeScreen;
+import dev.recordable.screen.RecordableHomeButton;
+import dev.recordable.screen.VideoCollectionScreen;
+
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.settings.GameSettings;
@@ -24,6 +27,7 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
 
 import java.lang.reflect.Constructor;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Keybindings and Forge event bridges for the fixed 1.8.9 client target.
@@ -48,6 +52,9 @@ public final class RecordableClientEvents {
     private KeyBinding toggleCensor;
     private KeyBinding openCensorEditor;
     private boolean missingFfmpegNoticeShown;
+    private boolean ffmpegWelcomeCheckStarted;
+    private RecordableHomeButton homeButton;
+    private GuiScreen initializedMainMenu;
 
     private RecordableClientEvents() {
     }
@@ -104,6 +111,7 @@ public final class RecordableClientEvents {
         if (event.phase != TickEvent.Phase.END) return;
 
         Minecraft minecraft = Minecraft.getMinecraft();
+        ensureInitialMainMenuEvents(minecraft);
         RecordingManager manager = RecordingManager.getInstance();
         while (toggleRecording.isPressed()) {
             manager.toggleRecording();
@@ -162,8 +170,14 @@ public final class RecordableClientEvents {
 
         if (!missingFfmpegNoticeShown
                 && RecordingManager.isInGameState(minecraft)) {
+            FfmpegBundleManager.Status status =
+                    FfmpegBundleManager.getStatus();
+            if (status == FfmpegBundleManager.Status.CHECKING
+                    || status == FfmpegBundleManager.Status.DOWNLOADING) {
+                return;
+            }
             missingFfmpegNoticeShown = true;
-            if (!FfmpegBundleManager.detectFfmpeg().isFound()) {
+            if (status != FfmpegBundleManager.Status.AVAILABLE) {
                 RecordableMessages.send(
                         ChatCategory.WARNINGS,
                         "FFmpeg is missing. Press "
@@ -188,6 +202,12 @@ public final class RecordableClientEvents {
         LiveEffectsRenderer.renderScreen(
                 new net.minecraft.client.gui.ScaledResolution(
                         Minecraft.getMinecraft()));
+        if (event.gui instanceof GuiMainMenu && homeButton != null) {
+            homeButton.drawTooltip(
+                    Minecraft.getMinecraft(),
+                    event.mouseX,
+                    event.mouseY);
+        }
     }
 
     @SubscribeEvent
@@ -261,34 +281,98 @@ public final class RecordableClientEvents {
                 event.entityLiving.getName());
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onMainMenuInitialized(
             GuiScreenEvent.InitGuiEvent.Post event) {
-        if (!(event.gui instanceof GuiMainMenu)
-                || !RecordableConfig.get().showHomeButton) {
+        if (!(event.gui instanceof GuiMainMenu)) {
             return;
         }
-        int width = 98;
-        int x = event.gui.width - width - 5;
-        int y = event.gui.height - 25;
-        event.buttonList.add(new GuiButton(
-                HOME_BUTTON_ID,
-                x,
-                y,
-                width,
-                20,
-                "Record-able"));
+
+        initializedMainMenu = event.gui;
+        homeButton = null;
+        RecordableConfig config = RecordableConfig.get();
+        if (config.showHomeButton) {
+            int x = event.gui.width / 2 + 104;
+            int y = event.gui.height / 4 + 72;
+            homeButton = new RecordableHomeButton(
+                    HOME_BUTTON_ID,
+                    x,
+                    y);
+            event.buttonList.add(homeButton);
+        }
+        scheduleFfmpegWelcome(event.gui);
+    }
+
+    /**
+     * Forge can construct and initialize the first title screen before client
+     * mods receive FMLInitializationEvent. Reinitializing that same screen
+     * once makes its normal Forge GUI events observable without replacing a
+     * custom GuiMainMenu subclass installed by another mod.
+     */
+    private void ensureInitialMainMenuEvents(Minecraft minecraft) {
+        GuiScreen current = minecraft == null
+                ? null
+                : minecraft.currentScreen;
+        if (!(current instanceof GuiMainMenu)
+                || current == initializedMainMenu
+                || current.width <= 0
+                || current.height <= 0) {
+            return;
+        }
+        initializedMainMenu = current;
+        current.setWorldAndResolution(
+                minecraft,
+                current.width,
+                current.height);
     }
 
     @SubscribeEvent
     public void onGuiAction(
             GuiScreenEvent.ActionPerformedEvent.Post event) {
-        if (event.button != null
+        if (event.gui instanceof GuiMainMenu
+                && event.button != null
+                && event.button == homeButton
                 && event.button.id == HOME_BUTTON_ID) {
-            openScreen(
-                    "dev.recordable.screen.RecordableSettingsScreen",
-                    event.gui);
+            Minecraft.getMinecraft().displayGuiScreen(
+                    new VideoCollectionScreen(event.gui));
         }
+    }
+
+    private void scheduleFfmpegWelcome(final GuiScreen parent) {
+        final RecordableConfig config = RecordableConfig.get();
+        if (config.ffmpegFirstRunShown || ffmpegWelcomeCheckStarted) {
+            return;
+        }
+
+        ffmpegWelcomeCheckStarted = true;
+        CompletableFuture
+                .supplyAsync(FfmpegBundleManager::detectFfmpeg)
+                .whenComplete((status, failure) -> {
+                    Minecraft minecraft = Minecraft.getMinecraft();
+                    if (minecraft == null) {
+                        ffmpegWelcomeCheckStarted = false;
+                        return;
+                    }
+                    minecraft.addScheduledTask(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (failure == null
+                                    && status != null
+                                    && status.isFound()) {
+                                config.ffmpegFirstRunShown = true;
+                                config.save();
+                                return;
+                            }
+                            GuiScreen current = minecraft.currentScreen;
+                            if (current instanceof GuiMainMenu) {
+                                minecraft.displayGuiScreen(
+                                        new FfmpegWelcomeScreen(current));
+                            } else {
+                                ffmpegWelcomeCheckStarted = false;
+                            }
+                        }
+                    });
+                });
     }
 
     private static boolean openScreen(

@@ -1,5 +1,6 @@
 package dev.recordable;
 
+import dev.recordable.theme.ThemeColors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
@@ -31,8 +32,15 @@ public final class RecordingOverlay {
     private static final String[] VHS_LAYERS = {
             "Corners", "PLAY/REC", "Timestamp", "SP", "Details", "Perf"
     };
-    private static final long TOAST_DURATION_MS = 5000L;
-    private static final long TOAST_FADE_MS = 500L;
+    private static final int TOAST_PANEL_FILL = 0xFF9E9E9E;
+    private static final int TOAST_PANEL_BORDER = 0xFF474747;
+    private static final int TOAST_TEXT_COLOR = 0xFFA6E000;
+    private static final int TOAST_LOGO_RED = 0xFFD40000;
+    private static final int TOAST_LOGO_ORANGE = 0xFFFF3B00;
+    private static final int TOAST_LOGO_WHITE = 0xFFFFFFFF;
+    private static final int TOAST_LOGO_SIZE = 16;
+    private static final int TOAST_BORDER = 2;
+    private static final int TOAST_MARGIN = 10;
     private static final Random AUDIO_RANDOM = new Random();
 
     private static final SimpleDateFormat VHS_DATE =
@@ -41,8 +49,6 @@ public final class RecordingOverlay {
             new SimpleDateFormat("hh:mm a", Locale.ENGLISH);
 
     private static float simulatedAudioLevel = 0.08F;
-    private static String displayedToast;
-    private static long toastStartedAt;
 
     private RecordingOverlay() {
     }
@@ -128,47 +134,59 @@ public final class RecordingOverlay {
         boolean paused = manager.isPaused();
         boolean blink = blinkOn();
         long elapsed = manager.getEffectiveRecordingMillis();
-        String estimatedSize = estimatedSize(manager);
+        String effectiveTime = RecordingManager.formatDuration(elapsed);
+        ThemeColors skin = activeOverlaySkin(config);
 
-        String title;
-        if (paused) {
-            title = (blink ? "|| " : "   ") + "PAUSED";
+        String firstLine;
+        if (manager.getState() == RecordingManager.State.STOPPING) {
+            firstLine = "REC stopping...";
+        } else if (paused) {
+            // Minecraft 1.8.9's bundled font does not reliably contain U+23F8.
+            firstLine = (blink ? "|| " : "   ")
+                    + "PAUSED " + effectiveTime;
         } else {
-            title = "REC";
-        }
-        if (config.showRecordingTimer) {
-            title += " " + formatTimer(elapsed);
-        }
-
-        List<String> lines = new ArrayList<String>();
-        List<Integer> colors = new ArrayList<Integer>();
-        lines.add(title);
-        colors.add(paused ? 0xFFFFD166 : 0xFFFFFFFF);
-
-        lines.add("Cap " + rounded(manager.getCaptureFpsEstimate())
-                + " | Enc " + rounded(manager.getEncoderFpsEstimate()) + " FPS");
-        colors.add(0xFFE0E0E0);
-
-        if (config.showEstimatedFileSize) {
-            lines.add("Est. size: " + estimatedSize);
-            colors.add(0xFFFFFFFF);
+            // The official HUD uses a bullet glyph. A procedural REC dot below
+            // preserves that appearance on the legacy font renderer.
+            firstLine = "REC " + effectiveTime;
         }
 
-        String queueLine = "Queue: " + queueLabel(manager);
-        if (config.showPerformanceStats) {
-            queueLine += " | Mem " + manager.getUsedMemoryMiB() + " MiB";
-        }
-        lines.add(queueLine);
-        colors.add(queueColor(manager));
+        long fileSizeBytes = manager.getCurrentFileSizeBytes();
+        String fileSize = fileSizeBytes > 0L
+                ? RecordingManager.formatBytes(fileSizeBytes)
+                : "starting...";
+        String secondLine = manager.getRecordingFps()
+                + " FPS  drop " + manager.getDroppedFrames();
+        /*
+         * The 1.8.9 manager intentionally does not expose its FFmpeg queue's
+         * raw size/capacity. Preserve the official resolution and queue-health
+         * information without inventing occupancy values.
+         */
+        String thirdLine = manager.getRecordingWidth()
+                + "x" + manager.getRecordingHeight()
+                + "  Queue: " + queueLabel(manager);
 
-        int widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, font.getStringWidth(line));
+        ReplayBuffer replay = ReplayBuffer.getInstance();
+        boolean replayActive = replay.isActive();
+        String replayLine = replayActive
+                ? "Replay: " + replay.getBufferedSeconds()
+                        + "s buffered (" + replay.getBufferedFrameCount()
+                        + " frames)"
+                : "";
+
+        int widest = Math.max(
+                font.getStringWidth(firstLine),
+                Math.max(
+                        font.getStringWidth(secondLine),
+                        Math.max(
+                                font.getStringWidth("Size: " + fileSize),
+                                font.getStringWidth(thirdLine))));
+        if (replayActive) {
+            widest = Math.max(widest, font.getStringWidth(replayLine));
         }
 
-        int panelWidth = widest + 18;
-        int panelHeight = lines.size() * 11 + 9;
-        int[] position = resolvePosition(
+        int panelWidth = widest + 22;
+        int panelHeight = 12 + (replayActive ? 4 : 3) * 11;
+        int[] position = resolveClassicPosition(
                 config,
                 width,
                 height,
@@ -180,35 +198,73 @@ public final class RecordingOverlay {
         int x = position[0];
         int y = position[1];
 
-        int accent = 0xFF000000 | config.getOverlayColorRgb();
-        Gui.drawRect(x, y, x + panelWidth, y + panelHeight, 0xB0000000);
-        Gui.drawRect(x, y, x + panelWidth, y + 2, withAlpha(accent, 190));
+        int accent = skin != null
+                ? 0xFF000000 | (skin.accent & 0x00FFFFFF)
+                : 0xFF000000 | config.getOverlayColorRgb();
+        int panelBackground = skin != null
+                ? skin.panelBackground
+                : 0x99000000;
+        Gui.drawRect(
+                x - 3,
+                y - 3,
+                x + panelWidth,
+                y + panelHeight,
+                panelBackground);
+        Gui.drawRect(
+                x - 3,
+                y - 3,
+                x + panelWidth,
+                y - 2,
+                withAlpha(accent, 170));
 
-        int textX = x + 6;
-        if (!paused && blink) {
-            Gui.drawRect(x + 6, y + 7, x + 13, y + 14, accent);
-            textX = x + 17;
+        if (!paused) {
+            Gui.drawRect(x, y + 3, x + 8, y + 11, accent);
         }
 
-        int lineY = y + 5;
-        for (int index = 0; index < lines.size(); index++) {
-            drawText(font, lines.get(index), index == 0 ? textX : x + 6,
-                    lineY, colors.get(index).intValue());
-            lineY += 11;
+        int lineY = y;
+        drawText(
+                font,
+                firstLine,
+                x + (paused ? 0 : 13),
+                lineY,
+                paused ? 0xFFFFD166 : 0xFFFFFFFF);
+        lineY += 12;
+        drawText(
+                font,
+                secondLine,
+                x,
+                lineY,
+                skin != null ? skin.textSecondary : 0xFFE0E0E0);
+        lineY += 11;
+        drawText(
+                font,
+                "Size: " + fileSize,
+                x,
+                lineY,
+                fileSizeBytes > 0L ? 0xFFFFFFFF : 0xFFAAAAAA);
+        lineY += 11;
+        drawText(font, thirdLine, x, lineY, queueColor(manager));
+        lineY += 11;
+        if (replayActive) {
+            drawText(font, replayLine, x, lineY, 0xFF88CCFF);
         }
     }
 
     private static void renderVhs(FontRenderer font, RecordableConfig config,
                                   RecordingManager manager, int width, int height) {
         updateAudioLevel(manager.isMicrophoneActive());
+        ThemeColors skin = activeOverlaySkin(config);
         List<String> layers = parseLayerOrder(config.hudLayerOrder);
 
         for (String layer : layers) {
             if ("Corners".equals(layer)) {
                 if (config.hudCornersVisible && config.vhsShowBrackets) {
                     int color = RecordableConfig.applyOpacity(
-                            RecordableConfig.parseArgbColor(
-                                    config.vhsBracketColor, 0xC8FFFFFF),
+                            skin != null
+                                    ? skin.accent
+                                    : RecordableConfig.parseArgbColor(
+                                            config.vhsBracketColor,
+                                            0xC8FFFFFF),
                             config.hudCornersOpacity);
                     drawCornerBrackets(
                             config.hudCornersX,
@@ -221,16 +277,25 @@ public final class RecordingOverlay {
                 }
             } else if ("PLAY/REC".equals(layer)) {
                 if (config.hudPlayRecVisible) {
-                    renderVhsPlayRec(font, config, manager);
+                    renderVhsPlayRec(font, config, skin);
                 }
             } else if ("Timestamp".equals(layer)) {
-                if (config.hudTimestampVisible && config.showRecordingTimer) {
-                    renderVhsTimestamp(font, config, manager, width);
+                if (config.hudTimestampVisible) {
+                    renderVhsTimestamp(
+                            font,
+                            config,
+                            manager,
+                            skin,
+                            width);
                 }
             } else if ("SP".equals(layer)) {
                 if (config.hudSpVisible && config.vhsShowSp) {
                     int color = RecordableConfig.applyOpacity(
-                            RecordableConfig.parseArgbColor(config.vhsSpColor, 0xFFFFFFFF),
+                            skin != null
+                                    ? skin.textPrimary
+                                    : RecordableConfig.parseArgbColor(
+                                            config.vhsSpColor,
+                                            0xFFFFFFFF),
                             config.hudSpOpacity);
                     drawText(font, "SP", config.hudSpX,
                             height - config.hudSpOffsetY, color);
@@ -246,43 +311,59 @@ public final class RecordingOverlay {
             }
         }
 
-        if (config.hudPerfVisible) {
-            renderVhsPerformanceLine(font, config, manager, height);
-        }
+        // V1-0.09 treats this compact health line as part of the VHS skin,
+        // independent of the optional larger performance panel.
+        renderVhsPerformanceLine(font, config, manager, height);
     }
 
     private static void renderVhsPlayRec(FontRenderer font, RecordableConfig config,
-                                         RecordingManager manager) {
+                                         ThemeColors skin) {
         int x = Math.max(0, config.hudPlayRecX);
         int y = Math.max(0, config.hudPlayRecY);
         int opacity = config.hudPlayRecOpacity;
 
         if (config.vhsShowPlay) {
             int playColor = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(config.vhsPlayColor, 0xFFFFFFFF),
+                    skin != null
+                            ? skin.textPrimary
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsPlayColor,
+                                    0xFFFFFFFF),
                     opacity);
-            drawText(font, manager.isPaused() ? "PAUSE ||" : "PLAY >",
-                    x, y, playColor);
+            drawText(font, "PLAY >", x, y, playColor);
             y += 12;
         }
 
         int recTextColor = RecordableConfig.applyOpacity(
-                RecordableConfig.parseArgbColor(config.vhsRecTextColor, 0xFFFFFFFF),
+                skin != null
+                        ? skin.textPrimary
+                        : RecordableConfig.parseArgbColor(
+                                config.vhsRecTextColor,
+                                0xFFFFFFFF),
                 opacity);
-        String label = manager.isPaused() ? "PAUSED" : "REC";
         if (blinkOn()) {
             int dotColor = RecordableConfig.applyOpacity(
-                    RecordableConfig.parseArgbColor(config.vhsRecDotColor, 0xFFCC1E1E),
+                    skin != null
+                            ? skin.accent
+                            : RecordableConfig.parseArgbColor(
+                                    config.vhsRecDotColor,
+                                    0xFFCC1E1E),
                     opacity);
             Gui.drawRect(x, y + 2, x + 7, y + 9, dotColor);
         }
-        drawText(font, label, x + 10, y, recTextColor);
+        drawText(font, "REC", x + 10, y, recTextColor);
     }
 
     private static void renderVhsTimestamp(FontRenderer font, RecordableConfig config,
-                                           RecordingManager manager, int width) {
+                                           RecordingManager manager,
+                                           ThemeColors skin,
+                                           int width) {
         int color = RecordableConfig.applyOpacity(
-                RecordableConfig.parseArgbColor(config.vhsTimestampColor, 0xFFFFFFFF),
+                skin != null
+                        ? skin.textPrimary
+                        : RecordableConfig.parseArgbColor(
+                                config.vhsTimestampColor,
+                                0xFFFFFFFF),
                 config.hudTimestampOpacity);
         String timer = formatTimer(manager.getEffectiveRecordingMillis());
         int x = width - Math.max(0, config.hudTimestampOffsetX)
@@ -302,7 +383,7 @@ public final class RecordingOverlay {
                     RecordableConfig.parseArgbColor(config.vhsDateColor, 0xFFFFFFFF),
                     opacity);
             String time = VHS_TIME.format(now).toUpperCase(Locale.ROOT);
-            String date = VHS_DATE.format(now).toUpperCase(Locale.ROOT);
+            String date = VHS_DATE.format(now);
             cursorY -= 22;
             drawTextRight(font, time, right, cursorY, color);
             drawTextRight(font, date, right, cursorY + 11, color);
@@ -321,13 +402,6 @@ public final class RecordingOverlay {
                     RecordableConfig.applyOpacity(0xFFCCCCCC, opacity));
         }
 
-        if (config.showEstimatedFileSize) {
-            String size = "EST " + estimatedSize(manager);
-            cursorY -= 11;
-            drawTextRight(font, size, right, cursorY,
-                    RecordableConfig.applyOpacity(0xFFCCCCCC, opacity));
-        }
-
         if (config.vhsShowAudioMeter) {
             cursorY -= 12;
             drawAudioMeter(right - 60, cursorY, 55, 8, opacity);
@@ -343,19 +417,21 @@ public final class RecordingOverlay {
                                                  RecordableConfig config,
                                                  RecordingManager manager,
                                                  int height) {
-        int opacity = config.hudPerfOpacity;
-        String fps = "Cap " + rounded(manager.getCaptureFpsEstimate())
-                + " Enc " + rounded(manager.getEncoderFpsEstimate()) + " FPS  ";
+        String fps = manager.getRecordingFps()
+                + " FPS  drop " + manager.getDroppedFrames() + "  ";
         String queue = "Q " + queueLabel(manager);
-        int x = Math.max(4, config.hudPerfOffsetX);
+        int x = 4;
         int y = height - 11;
         int width = font.getStringWidth(fps) + font.getStringWidth(queue);
         Gui.drawRect(x - 2, y - 2, x + width + 2, y + 10,
-                RecordableConfig.applyOpacity(0x88000000, opacity));
-        drawText(font, fps, x, y,
-                RecordableConfig.applyOpacity(0xFFE0E0E0, opacity));
-        drawText(font, queue, x + font.getStringWidth(fps), y,
-                RecordableConfig.applyOpacity(queueColor(manager), opacity));
+                0x88000000);
+        drawText(font, fps, x, y, 0xFFE0E0E0);
+        drawText(
+                font,
+                queue,
+                x + font.getStringWidth(fps),
+                y,
+                queueColor(manager));
     }
 
     private static void renderVhsPerformancePanel(FontRenderer font,
@@ -363,13 +439,15 @@ public final class RecordingOverlay {
                                                   RecordingManager manager,
                                                   int width, int height) {
         List<String> lines = new ArrayList<String>();
-        lines.add("Capture " + rounded(manager.getCaptureFpsEstimate()) + " FPS");
-        lines.add("Encoder " + rounded(manager.getEncoderFpsEstimate()) + " FPS");
-        lines.add("Memory " + manager.getUsedMemoryMiB() + " MiB");
-        lines.add("Queue " + queueLabel(manager));
-        if (config.showEstimatedFileSize) {
-            lines.add("Est. " + estimatedSize(manager));
-        }
+        lines.add("Cap " + rounded(manager.getCaptureFpsEstimate())
+                + " | Enc " + rounded(manager.getEncoderFpsEstimate()) + " FPS");
+        lines.add("Mem " + manager.getUsedMemoryMiB()
+                + " MiB | Drop " + manager.getDroppedFrames());
+        lines.add("Queue: " + queueLabel(manager)
+                + " | " + Math.round(
+                        PerformanceMetrics.getInstance()
+                                .getBufferHealthPercent())
+                + "%");
 
         int widest = 0;
         for (String line : lines) {
@@ -384,7 +462,7 @@ public final class RecordingOverlay {
         Gui.drawRect(x - 2, y - 2, x + panelWidth, y + panelHeight,
                 RecordableConfig.applyOpacity(0x99000000, opacity));
         for (int index = 0; index < lines.size(); index++) {
-            int color = index == 3 ? queueColor(manager) : 0xFFD0D0D0;
+            int color = index == 2 ? queueColor(manager) : 0xFFD0D0D0;
             drawText(font, lines.get(index), x + 2, y + index * 10,
                     RecordableConfig.applyOpacity(color, opacity));
         }
@@ -392,61 +470,46 @@ public final class RecordingOverlay {
 
     private static void renderSynthwave(FontRenderer font, RecordableConfig config,
                                         RecordingManager manager, int width, int height) {
-        boolean paused = manager.isPaused();
-        String title = paused ? "PAUSED" : "REC";
-        if (config.showRecordingTimer) {
-            title += " " + formatTimer(manager.getEffectiveRecordingMillis());
-        }
+        String line = "REC "
+                + formatTimer(manager.getEffectiveRecordingMillis());
+        int panelWidth = font.getStringWidth(line) + 22;
+        int panelHeight = 16;
+        // The official Synthwave panel has its own absolute placement and
+        // defaults to the desktop safe-area origin, independent of the Classic
+        // overlay-position preset.
+        int x = clamp(
+                config.hudSynthX >= 0 ? config.hudSynthX : 0,
+                0,
+                Math.max(0, width - panelWidth));
+        int y = clamp(
+                config.hudSynthY >= 0 ? config.hudSynthY : 0,
+                0,
+                Math.max(0, height - panelHeight));
 
-        List<String> lines = new ArrayList<String>();
-        lines.add(title);
-        if (config.showEstimatedFileSize) {
-            lines.add("EST " + estimatedSize(manager));
-        }
-        if (config.showPerformanceStats) {
-            lines.add("C " + rounded(manager.getCaptureFpsEstimate())
-                    + " E " + rounded(manager.getEncoderFpsEstimate())
-                    + " | Q " + queueLabel(manager));
-        }
-
-        int widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, font.getStringWidth(line));
-        }
-        int panelWidth = widest + 25;
-        int panelHeight = Math.max(18, lines.size() * 10 + 8);
-        int[] position = resolvePosition(
-                config,
-                width,
-                height,
-                panelWidth,
-                panelHeight,
-                config.hudSynthX,
-                config.hudSynthY,
-                10);
-        int x = position[0];
-        int y = position[1];
-
-        int accent = 0xFF000000 | config.getOverlayColorRgb();
-        int cyan = 0xFF00E5FF;
-        Gui.drawRect(x, y, x + panelWidth, y + panelHeight, 0xE61A0B2E);
-        Gui.drawRect(x, y, x + panelWidth, y + 1, accent);
+        ThemeColors skin = activeOverlaySkin(config);
+        int magenta = skin != null ? skin.accent : 0xFFFF2D95;
+        int cyan = skin != null ? skin.accentHover : 0xFF00E5FF;
+        int panelBackground = skin != null
+                ? skin.panelBackground
+                : 0xE61A0B2E;
+        int textColor = skin != null ? skin.textPrimary : cyan;
+        Gui.drawRect(
+                x,
+                y,
+                x + panelWidth,
+                y + panelHeight,
+                panelBackground);
+        Gui.drawRect(x, y, x + panelWidth, y + 1, magenta);
         Gui.drawRect(x, y + panelHeight - 1, x + panelWidth, y + panelHeight, cyan);
-        Gui.drawRect(x, y, x + 1, y + panelHeight, accent);
+        Gui.drawRect(x, y, x + 1, y + panelHeight, magenta);
         Gui.drawRect(x + panelWidth - 1, y,
                 x + panelWidth, y + panelHeight, cyan);
 
         if (blinkOn()) {
             Gui.drawRect(x + 6, y + 6, x + 12, y + 12,
-                    paused ? 0xFFFFD166 : accent);
+                    magenta);
         }
-        for (int index = 0; index < lines.size(); index++) {
-            int color = index == 0
-                    ? (paused ? 0xFFFFD166 : cyan)
-                    : (index == lines.size() - 1 && config.showPerformanceStats
-                    ? queueColor(manager) : 0xFFD7B8FF);
-            drawText(font, lines.get(index), x + 16, y + 4 + index * 10, color);
-        }
+        drawText(font, line, x + 16, y + 4, textColor);
     }
 
     private static void renderMicrophoneIndicator(ScaledResolution resolution,
@@ -493,50 +556,184 @@ public final class RecordingOverlay {
 
     private static void renderToast(ScaledResolution resolution, FontRenderer font,
                                     RecordableConfig config, RecordingManager manager) {
-        String message = manager.getPendingToastMessage();
-        if (message == null || message.trim().isEmpty()) {
-            displayedToast = null;
-            toastStartedAt = 0L;
-            return;
-        }
-        if (!config.showPostRecordingToast) {
-            manager.dismissToast();
-            displayedToast = null;
-            toastStartedAt = 0L;
-            return;
-        }
-
+        List<ToastQueue.Entry> entries = ToastQueue.active();
+        if (entries.isEmpty()) return;
         long now = System.currentTimeMillis();
-        if (!message.equals(displayedToast)) {
-            displayedToast = message;
-            toastStartedAt = now;
-        }
-        long age = Math.max(0L, now - toastStartedAt);
-        if (age >= TOAST_DURATION_MS) {
-            manager.dismissToast();
-            displayedToast = null;
-            toastStartedAt = 0L;
-            return;
-        }
+        int stackY = 8 + TOAST_LOGO_SIZE / 2;
+        for (ToastQueue.Entry entry : entries) {
+            float alpha = entry.alpha(now);
+            if (alpha <= 0.02F) continue;
+            int maxTextWidth = Math.min(
+                    150,
+                    Math.max(70, font.getStringWidth(entry.message) + 6));
+            List<String> lines = wrapToast(
+                    font,
+                    entry.message,
+                    maxTextWidth);
+            if (lines.isEmpty()) {
+                stackY += 4;
+                continue;
+            }
+            int textWidth = 0;
+            for (String line : lines) {
+                textWidth = Math.max(
+                        textWidth,
+                        font.getStringWidth(line));
+            }
+            int lineHeight = font.FONT_HEIGHT + 2;
+            int panelWidth = textWidth + 14;
+            int topPadding = TOAST_LOGO_SIZE / 2 + 4;
+            int panelHeight = topPadding
+                    + lines.size() * lineHeight + 4;
+            int panelX = resolution.getScaledWidth()
+                    - panelWidth - TOAST_MARGIN;
+            panelX += Math.round(
+                    (1.0F - entry.slideProgress(now)) * 14.0F);
+            int panelY = stackY;
+            int opacity = clamp(
+                    Math.round(alpha * 255.0F),
+                    0,
+                    255);
 
-        int maximumTextWidth = Math.max(20, resolution.getScaledWidth() - 50);
-        String visibleMessage = font.trimStringToWidth(message, maximumTextWidth);
-        int toastWidth = font.getStringWidth(visibleMessage) + 24;
-        int toastHeight = 24;
-        int x = (resolution.getScaledWidth() - toastWidth) / 2;
-        int y = resolution.getScaledHeight() - toastHeight - 40;
-        int opacity = 255;
-        long fadeStart = TOAST_DURATION_MS - TOAST_FADE_MS;
-        if (age > fadeStart) {
-            opacity = (int) ((TOAST_DURATION_MS - age) * 255L / TOAST_FADE_MS);
-        }
+            Gui.drawRect(
+                    panelX - TOAST_BORDER,
+                    panelY - TOAST_BORDER,
+                    panelX + panelWidth + TOAST_BORDER,
+                    panelY + panelHeight + TOAST_BORDER,
+                    withAlpha(TOAST_PANEL_BORDER, opacity));
+            Gui.drawRect(
+                    panelX,
+                    panelY,
+                    panelX + panelWidth,
+                    panelY + panelHeight,
+                    withAlpha(TOAST_PANEL_FILL, opacity));
 
-        Gui.drawRect(x, y, x + toastWidth, y + toastHeight,
-                withAlpha(0xFF1A1A1A, opacity * 221 / 255));
-        Gui.drawRect(x, y, x + toastWidth, y + 1,
-                withAlpha(0xFF44AA44, opacity));
-        drawText(font, visibleMessage, x + 12, y + 8,
-                withAlpha(0xFFFFFFFF, opacity));
+            int logoX = panelX
+                    + (panelWidth - TOAST_LOGO_SIZE) / 2;
+            int logoY = panelY - TOAST_LOGO_SIZE / 2;
+            drawToastLogo(
+                    logoX,
+                    logoY,
+                    TOAST_LOGO_SIZE,
+                    opacity);
+
+            int textY = panelY + topPadding;
+            for (String line : lines) {
+                int lineX = panelX
+                        + (panelWidth
+                            - font.getStringWidth(line)) / 2;
+                drawText(
+                        font,
+                        line,
+                        lineX,
+                        textY,
+                        withAlpha(TOAST_TEXT_COLOR, opacity));
+                textY += lineHeight;
+            }
+            stackY += panelHeight + TOAST_LOGO_SIZE / 2 + 8;
+        }
+    }
+
+    private static List<String> wrapToast(
+            FontRenderer font,
+            String message,
+            int maximumWidth) {
+        List<String> result = new ArrayList<String>();
+        if (message == null || message.isEmpty()) return result;
+        StringBuilder current = new StringBuilder();
+        for (String word : message.split(" ")) {
+            String candidate = current.length() == 0
+                    ? word
+                    : current + " " + word;
+            if (font.getStringWidth(candidate) > maximumWidth
+                    && current.length() > 0) {
+                result.add(current.toString());
+                current = new StringBuilder(word);
+            } else {
+                current = new StringBuilder(candidate);
+            }
+        }
+        if (current.length() > 0) result.add(current.toString());
+        return result;
+    }
+
+    private static void drawToastLogo(
+            int x,
+            int y,
+            int size,
+            int opacity) {
+        Gui.drawRect(
+                x,
+                y,
+                x + size,
+                y + size,
+                withAlpha(TOAST_LOGO_RED, opacity));
+        float centerX = x + size / 2.0F;
+        float centerY = y + size * 0.42F;
+        fillEllipse(
+                centerX,
+                centerY,
+                size * 0.30F,
+                size * 0.27F,
+                withAlpha(TOAST_LOGO_ORANGE, opacity));
+        fillTriangle(
+                centerX,
+                y + size * 0.30F,
+                x + size * 0.22F,
+                y + size * 0.92F,
+                x + size * 0.78F,
+                y + size * 0.92F,
+                withAlpha(TOAST_LOGO_WHITE, opacity));
+    }
+
+    private static void fillEllipse(
+            float centerX,
+            float centerY,
+            float radiusX,
+            float radiusY,
+            int color) {
+        int top = (int) Math.floor(centerY - radiusY);
+        int bottom = (int) Math.ceil(centerY + radiusY);
+        for (int py = top; py < bottom; py++) {
+            float dy = (py + 0.5F - centerY) / radiusY;
+            if (dy < -1.0F || dy > 1.0F) continue;
+            float halfWidth = radiusX
+                    * (float) Math.sqrt(
+                            Math.max(0.0F, 1.0F - dy * dy));
+            int left = Math.round(centerX - halfWidth);
+            int right = Math.round(centerX + halfWidth);
+            if (right > left) {
+                Gui.drawRect(left, py, right, py + 1, color);
+            }
+        }
+    }
+
+    private static void fillTriangle(
+            float apexX,
+            float apexY,
+            float leftX,
+            float baseY,
+            float rightX,
+            float ignoredBaseY,
+            int color) {
+        int top = (int) Math.floor(apexY);
+        int bottom = (int) Math.ceil(baseY);
+        float height = Math.max(1.0F, baseY - apexY);
+        for (int py = top; py < bottom; py++) {
+            float progress = (py + 0.5F - apexY) / height;
+            int rowLeft = Math.round(
+                    apexX + (leftX - apexX) * progress);
+            int rowRight = Math.round(
+                    apexX + (rightX - apexX) * progress);
+            if (rowRight > rowLeft) {
+                Gui.drawRect(
+                        rowLeft,
+                        py,
+                        rowRight,
+                        py + 1,
+                        color);
+            }
+        }
     }
 
     private static List<String> parseLayerOrder(String configuredOrder) {
@@ -637,10 +834,28 @@ public final class RecordingOverlay {
         return 0xFFCC4444;
     }
 
-    private static int[] resolvePosition(RecordableConfig config,
-                                         int screenWidth, int screenHeight,
-                                         int panelWidth, int panelHeight,
-                                         int customX, int customY, int margin) {
+    private static int[] resolveClassicPosition(
+            RecordableConfig config,
+            int screenWidth,
+            int screenHeight,
+            int panelWidth,
+            int panelHeight,
+            int customX,
+            int customY,
+            int margin) {
+        if (customX >= 0 && customY >= 0) {
+            return new int[]{
+                    clamp(
+                            customX,
+                            0,
+                            Math.max(0, screenWidth - panelWidth)),
+                    clamp(
+                            customY,
+                            0,
+                            Math.max(0, screenHeight - panelHeight))
+            };
+        }
+
         int x;
         int y;
         RecordableConfig.OverlayPosition position = config.overlayPosition;
@@ -649,20 +864,20 @@ public final class RecordingOverlay {
         }
         switch (position) {
             case TOP_RIGHT:
-                x = screenWidth - panelWidth - margin;
+                x = screenWidth - panelWidth - margin - 130;
                 y = margin;
                 break;
             case BOTTOM_LEFT:
                 x = margin;
-                y = screenHeight - panelHeight - margin;
+                y = screenHeight - panelHeight - margin - 50;
                 break;
             case BOTTOM_RIGHT:
-                x = screenWidth - panelWidth - margin;
-                y = screenHeight - panelHeight - margin;
+                x = screenWidth - panelWidth - margin - 130;
+                y = screenHeight - panelHeight - margin - 50;
                 break;
             case CENTER_TOP:
                 x = (screenWidth - panelWidth) / 2;
-                y = margin;
+                y = margin + 70;
                 break;
             case TOP_LEFT:
             default:
@@ -670,15 +885,11 @@ public final class RecordingOverlay {
                 y = margin;
                 break;
         }
-        if (customX >= 0) {
-            x = customX;
-        }
-        if (customY >= 0) {
-            y = customY;
-        }
+        int maximumX = Math.max(margin, screenWidth - panelWidth - margin);
+        int maximumY = Math.max(margin, screenHeight - panelHeight - margin);
         return new int[]{
-                clamp(x, 0, Math.max(0, screenWidth - panelWidth)),
-                clamp(y, 0, Math.max(0, screenHeight - panelHeight))
+                clamp(x, margin, maximumX),
+                clamp(y, margin, maximumY)
         };
     }
 
@@ -694,6 +905,17 @@ public final class RecordingOverlay {
             return "SLOW";
         }
         return "OK";
+    }
+
+    /**
+     * V1-0.09 lets the recording HUD inherit the active menu palette without
+     * changing any of the user's stored per-element VHS colors.
+     */
+    private static ThemeColors activeOverlaySkin(RecordableConfig config) {
+        if (config == null || !config.overlaySkinEnabled) {
+            return null;
+        }
+        return ThemeColors.forPreset(config.uiTheme);
     }
 
     private static int queueColor(RecordingManager manager) {
@@ -721,11 +943,6 @@ public final class RecordingOverlay {
                 Long.valueOf(hours),
                 Long.valueOf(minutes),
                 Long.valueOf(seconds));
-    }
-
-    private static String estimatedSize(RecordingManager manager) {
-        String value = manager.getEstimatedFileSize();
-        return value == null || value.trim().isEmpty() ? "starting..." : value;
     }
 
     private static long rounded(double value) {

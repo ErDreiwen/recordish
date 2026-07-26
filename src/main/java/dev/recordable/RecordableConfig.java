@@ -15,6 +15,8 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -51,6 +53,8 @@ public final class RecordableConfig {
         "android_phone", "low_end_pc", "mid_end_pc", "high_end_pc", "nasa"
     };
     public static final int MAX_WATERMARK_SLOTS = 4;
+    public static final String DEFAULT_FILENAME_PATTERN =
+            "recordable-{datetime}";
 
     public static final int DEFAULT_HOTKEY_TOGGLE_RECORDING = Keyboard.KEY_MINUS;
     public static final int DEFAULT_HOTKEY_PAUSE_RESUME = Keyboard.KEY_EQUALS;
@@ -185,6 +189,7 @@ public final class RecordableConfig {
     public int audioVolume = 100;
     public int audioVolumeBoostDb = 0;
     public boolean captureMicrophone = false;
+    public boolean includeVoiceChat = true;
     public String microphoneDevice = "auto";
     public int gameAudioVolume = 100;
     public int microphoneVolume = 80;
@@ -200,6 +205,7 @@ public final class RecordableConfig {
     // General and recording behavior
     public boolean enabled = true;
     public String outputDir = "recordings";
+    public String filenamePattern = DEFAULT_FILENAME_PATTERN;
     public boolean showOverlay = true;
     public boolean ffmpegFirstRunShown = false;
     public boolean bakeInOverlay = false;
@@ -478,6 +484,35 @@ public final class RecordableConfig {
         return getOutputDirectory().resolve("Clips");
     }
 
+    /**
+     * Expands the same filename tokens supported by the V1-0.09 modern
+     * client and strips characters that are illegal on common filesystems.
+     */
+    public static String resolveFilenamePattern(String pattern) {
+        String value = isBlank(pattern)
+                ? DEFAULT_FILENAME_PATTERN
+                : pattern.trim();
+        LocalDateTime now = LocalDateTime.now();
+        String datetime = now.format(
+                DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String date = now.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String time = now.format(DateTimeFormatter.ofPattern("HHmmss"));
+        String resolved = value
+                .replace("{datetime}", datetime)
+                .replace("{date}", date)
+                .replace("{time}", time)
+                .replaceAll("[\\\\/:*?\"<>|\\x00-\\x1F]", "")
+                .replaceAll("[ .]+$", "")
+                .trim();
+        if (resolved.isEmpty()) {
+            resolved = DEFAULT_FILENAME_PATTERN
+                    .replace("{datetime}", datetime)
+                    .replace("{date}", date)
+                    .replace("{time}", time);
+        }
+        return resolved;
+    }
+
     public String getFormat() {
         return sanitizeString(format, FORMATS, "mp4");
     }
@@ -630,38 +665,82 @@ public final class RecordableConfig {
 
     public void applyDevicePreset(String preset) {
         selectedDevicePreset = sanitizeDevicePreset(preset);
-        if ("android_phone".equals(selectedDevicePreset) || "low_end_pc".equals(selectedDevicePreset)) {
-            resolution = "android_phone".equals(selectedDevicePreset) ? "480p" : "720p";
+        bitrate = "auto";
+        captureAudio = true;
+        audioEncoder = AudioEncoder.AAC;
+        perfModeGamePriority = true;
+        if ("android_phone".equals(selectedDevicePreset)) {
+            resolution = "480p";
             fps = 30;
             quality = "performance";
             encoder = VideoEncoder.SOFTWARE;
-            audioBitrateKbps = "android_phone".equals(selectedDevicePreset) ? 96 : 128;
+            audioBitrateKbps = 96;
+            audioChannels = "mono";
+            audioChannelCount = 1;
+            audioSampleRate = 44100;
             perfOptimizerEnabled = true;
             perfAutoAdjust = true;
             perfMinFps = 30;
-        } else if ("nasa".equals(selectedDevicePreset)) {
-            resolution = "native";
-            fps = 120;
-            quality = "high";
-            audioBitrateKbps = 320;
-            perfOptimizerEnabled = false;
+            perfActionLowerRes = true;
+            perfActionLowerFps = true;
+            perfActionFasterPreset = true;
+            perfWarnBeforeAdjust = false;
+        } else if ("low_end_pc".equals(selectedDevicePreset)) {
+            resolution = "720p";
+            fps = 30;
+            quality = "performance";
+            encoder = VideoEncoder.SOFTWARE;
+            audioBitrateKbps = 128;
+            audioChannels = "stereo";
+            audioChannelCount = 2;
+            audioSampleRate = 44100;
+            perfOptimizerEnabled = true;
+            perfAutoAdjust = true;
+            perfMinFps = 30;
+            perfActionLowerRes = true;
+            perfActionLowerFps = true;
+            perfActionFasterPreset = true;
+            perfWarnBeforeAdjust = false;
         } else if ("high_end_pc".equals(selectedDevicePreset)) {
             resolution = "1080p";
             fps = 60;
             quality = "high";
+            encoder = VideoEncoder.NVIDIA;
             audioBitrateKbps = 256;
+            audioChannels = "stereo";
+            audioChannelCount = 2;
+            audioSampleRate = 48000;
             perfOptimizerEnabled = false;
+            perfAutoAdjust = false;
+        } else if ("nasa".equals(selectedDevicePreset)) {
+            resolution = "native";
+            fps = 120;
+            quality = "high";
+            encoder = VideoEncoder.NVIDIA;
+            audioBitrateKbps = 320;
+            audioChannels = "stereo";
+            audioChannelCount = 2;
+            audioSampleRate = 48000;
+            perfOptimizerEnabled = false;
+            perfAutoAdjust = false;
         } else {
             resolution = "1080p";
             fps = 60;
             quality = "balanced";
+            encoder = VideoEncoder.NVIDIA;
             audioBitrateKbps = 192;
+            audioChannels = "stereo";
+            audioChannelCount = 2;
+            audioSampleRate = 48000;
             perfOptimizerEnabled = true;
             perfAutoAdjust = true;
             perfMinFps = 45;
+            perfActionLowerRes = false;
+            perfActionLowerFps = true;
+            perfActionFasterPreset = true;
+            perfWarnBeforeAdjust = true;
         }
-        bitrate = "auto";
-        captureAudio = true;
+        activeTemplate = "custom";
         sanitize();
     }
 
@@ -698,6 +777,9 @@ public final class RecordableConfig {
         microphoneVolume = clamp(microphoneVolume, 0, 200);
         validateAudioEncoderCompatibility();
         if (isBlank(outputDir)) outputDir = "recordings";
+        filenamePattern = isBlank(filenamePattern)
+                ? DEFAULT_FILENAME_PATTERN
+                : filenamePattern.trim();
         overlayColor = sanitizeHexColor(overlayColor, "#FF0000");
         menuAccentColor = sanitizeHexColor(menuAccentColor, "#FF0000");
         overlayScale = clamp(overlayScale, 50, 200);
@@ -737,9 +819,7 @@ public final class RecordableConfig {
         autoCleanupMaxTotalMB = Math.max(0, autoCleanupMaxTotalMB);
         storageCompressionCrf = clamp(storageCompressionCrf, 0, 51);
         perfMinFps = clamp(perfMinFps, 10, 240);
-        if (!"blend".equals(smoothMotionMode) && !"duplicate".equals(smoothMotionMode)) {
-            smoothMotionMode = "blend";
-        }
+        smoothMotionMode = SmoothMotion.sanitizeMode(smoothMotionMode);
         if (!"SOLID".equals(streamerDefaultCensorStyle)
                 && !"GRADIENT".equals(streamerDefaultCensorStyle)) {
             streamerDefaultCensorStyle = "SOLID";

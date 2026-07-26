@@ -92,7 +92,7 @@ public final class LiveEffectsRenderer {
             && hasVisibleFilter(config);
         boolean watermarks = shouldRenderWatermarks(config, recording);
         boolean censors = minecraft.theWorld != null
-            && shouldRenderCensors(config, recording);
+            && shouldRenderCensors(config);
         if (!filters && !watermarks && !censors) {
             return;
         }
@@ -160,12 +160,8 @@ public final class LiveEffectsRenderer {
         }
 
         RecordableConfig config = RecordableConfig.get();
-        RecordingManager manager = RecordingManager.getInstance();
         if (config == null
-                || manager == null
-                || !shouldRenderCensors(
-                    config,
-                    manager.isActiveOrStopping())) {
+                || !shouldRenderScreenCensors(config)) {
             return;
         }
 
@@ -1024,19 +1020,12 @@ public final class LiveEffectsRenderer {
     }
 
     /**
-     * Documented V1-0.08 behavior:
-     *
-     * <ul>
-     *   <li>When baking is enabled, the live block is only a positioning
-     *       preview and follows the preview toggle.</li>
-     *   <li>When baking is disabled, an active recording shows the privacy
-     *       block unless the censor hotkey hid it.</li>
-     *   <li>Outside recording, either mode requires the preview toggle.</li>
-     * </ul>
+     * V1-0.09 behavior: baked regions use the explicit positioning preview;
+     * live-overlay regions remain visible whenever Streamer Mode is armed and
+     * disappear only when the censor hotkey hides them.
      */
     private static boolean shouldRenderCensors(
-            RecordableConfig config,
-            boolean recording) {
+            RecordableConfig config) {
         if (!config.streamerModeEnabled
                 || config.censorRegions == null
                 || config.censorRegions.isEmpty()) {
@@ -1045,10 +1034,26 @@ public final class LiveEffectsRenderer {
         if (config.bakeInOverlay) {
             return config.streamerShowCensorPreview;
         }
-        if (config.censorOverlayHidden) {
-            return false;
-        }
-        return recording || config.streamerShowCensorPreview;
+        /*
+         * Exact V1-0.09 privacy behavior: in live-overlay mode the mask stays
+         * visible whenever Streamer Mode is armed, including while idle before
+         * recording starts. The censor hotkey is the sole visibility override.
+         */
+        return !config.censorOverlayHidden;
+    }
+
+    /**
+     * The modern screen-level pass only reinforces a live (non-baked) privacy
+     * mask over inventories and menus. A baked preview belongs to the HUD pass
+     * alone; drawing it here would duplicate it over every open GuiScreen.
+     */
+    private static boolean shouldRenderScreenCensors(
+            RecordableConfig config) {
+        return config.streamerModeEnabled
+            && !config.bakeInOverlay
+            && !config.censorOverlayHidden
+            && config.censorRegions != null
+            && !config.censorRegions.isEmpty();
     }
 
     private static void renderCensorRegions(

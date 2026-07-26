@@ -120,6 +120,30 @@ tasks.register<JavaExec>("pipelineSmokeTest") {
     }
 }
 
+val ffmpegInstallerSmokeRoot =
+    layout.buildDirectory.dir("ffmpeg-installer-smoke")
+tasks.register<JavaExec>("ffmpegInstallerSmokeTest") {
+    group = "verification"
+    description =
+        "Downloads, verifies, stages, publishes, and probes managed FFmpeg"
+    dependsOn("testClasses")
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.recordable.FfmpegInstallerSmoke")
+    args(
+        ffmpegInstallerSmokeRoot
+            .map { it.dir("bin") }
+            .get()
+            .asFile
+            .absolutePath
+    )
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    })
+    doFirst {
+        project.delete(ffmpegInstallerSmokeRoot)
+    }
+}
+
 tasks.withType<Jar>().configureEach {
     archiveBaseName.set(modid)
     from("LICENSE") {

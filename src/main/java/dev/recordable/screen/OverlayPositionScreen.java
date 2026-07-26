@@ -2,6 +2,8 @@ package dev.recordable.screen;
 
 import dev.recordable.RecordableConfig;
 import dev.recordable.WatermarkSlot;
+import dev.recordable.theme.ThemeColors;
+import dev.recordable.theme.ThemeEngine;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -13,6 +15,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Visual position editor for the recording HUD and watermark layers.
@@ -25,27 +29,24 @@ import java.util.List;
 public final class OverlayPositionScreen extends GuiScreen {
     private static final int BUTTON_DONE = 1;
     private static final int BUTTON_RESET = 2;
-    private static final int BUTTON_CANCEL = 3;
+    private static final int BUTTON_PANEL = 3;
+    private static final int BUTTON_CANCEL = 4;
 
-    private static final int PANEL_WIDTH = 176;
-    private static final int PANEL_TOP = 33;
-    private static final int LIST_TOP = 53;
+    private static final int PANEL_WIDTH = 154;
+    private static final int PANEL_TOP = 36;
     private static final int ROW_HEIGHT = 16;
     private static final int BUTTON_HEIGHT = 20;
-    private static final int RESIZE_HANDLE = 5;
+    private static final int RESIZE_HANDLE = 6;
 
-    private static final int BACKGROUND = 0xD20B0B11;
-    private static final int PANEL_BACKGROUND = 0xEB11111A;
-    private static final int PANEL_BORDER = 0xFF464656;
-    private static final int ROW_BACKGROUND = 0x781C1C28;
-    private static final int ROW_SELECTED = 0xB43A3050;
-    private static final int ROW_HOVER = 0xA02A2939;
     private static final int BORDER_IDLE = 0x88FFFFFF;
-    private static final int BORDER_HOVER = 0xFFFFFF55;
-    private static final int BORDER_SELECTED = 0xFF55FF77;
-    private static final int GHOST_BORDER = 0x77FF6666;
-    private static final int LABEL_BACKGROUND = 0xD8000000;
-    private static final int ACCENT = 0xFF8C6CFF;
+    private static final int BORDER_HOVER = 0xCCFFFF00;
+    private static final int BORDER_SELECTED = 0xFF44FF44;
+    private static final int SELECTED_FILL = 0x2244FF44;
+    private static final int RESIZE_HANDLE_COLOR = 0xFFFF8844;
+    private static final int LABEL_BACKGROUND = 0xCC000000;
+    private static final int COORD_COLOR = 0xFFAAFFAA;
+    private static final int HEADER_COLOR = 0xFFFFFFFF;
+    private static final int HINT_COLOR = 0xFFB0B0B0;
 
     private final GuiScreen parent;
     private final List<String> layerOrder = new ArrayList<String>();
@@ -53,6 +54,7 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     private Snapshot original;
     private boolean resolved;
+    private boolean openingWatermarkEditor;
 
     private float overlayScale = 1.0F;
     private int virtualWidth;
@@ -63,12 +65,23 @@ public final class OverlayPositionScreen extends GuiScreen {
     private int dragOffsetX;
     private int dragOffsetY;
     private Element resizeElement;
-    private boolean resizing;
-    private boolean opacityDragging;
+    private ResizeEdge activeResize = ResizeEdge.NONE;
+    private ResizeEdge hoveredResize = ResizeEdge.NONE;
+    private int resizeOriginalX;
+    private int resizeOriginalY;
+    private int resizeOriginalWidth;
+    private int resizeOriginalHeight;
 
     private String selectedLayerId;
     private WatermarkSlot selectedWatermark;
     private int panelScroll;
+    private boolean panelOpen = true;
+    private boolean layersOpen = true;
+    private boolean opacityOpen;
+    private boolean watermarksOpen = true;
+    private final List<OpacityEntry> opacityEntries =
+            new ArrayList<OpacityEntry>();
+    private OpacityEntry draggingOpacity;
 
     public OverlayPositionScreen(GuiScreen parent) {
         this.parent = parent;
@@ -77,22 +90,46 @@ public final class OverlayPositionScreen extends GuiScreen {
     @Override
     public void initGui() {
         buttonList.clear();
+        ThemeEngine.get().applyPreset(RecordableConfig.get().uiTheme);
         if (original == null) {
             RecordableConfig config = RecordableConfig.get();
             original = new Snapshot(config);
             readLayerOrder(config);
         }
 
-        int buttonY = height - BUTTON_HEIGHT - 5;
-        int available = Math.max(170, width - panelWidth());
-        int startX = Math.max(5, (available - 190) / 2);
+        buildOpacityEntries();
+        int buttonWidth = 60;
+        int gap = 4;
+        int totalWidth = buttonWidth * 4 + gap * 3;
+        int startX = (width - totalWidth) / 2;
+        int buttonY = height - BUTTON_HEIGHT - 6;
         buttonList.add(new GuiButton(
-                BUTTON_DONE, startX, buttonY, 58, BUTTON_HEIGHT, "Done"));
+                BUTTON_DONE,
+                startX,
+                buttonY,
+                buttonWidth,
+                BUTTON_HEIGHT,
+                "Done"));
         buttonList.add(new GuiButton(
-                BUTTON_RESET, startX + 63, buttonY, 64, BUTTON_HEIGHT,
+                BUTTON_RESET,
+                startX + buttonWidth + gap,
+                buttonY,
+                buttonWidth,
+                BUTTON_HEIGHT,
                 "Reset All"));
         buttonList.add(new GuiButton(
-                BUTTON_CANCEL, startX + 132, buttonY, 58, BUTTON_HEIGHT,
+                BUTTON_PANEL,
+                startX + (buttonWidth + gap) * 2,
+                buttonY,
+                buttonWidth,
+                BUTTON_HEIGHT,
+                panelOpen ? "\u25B6 Panel" : "\u25C0 Panel"));
+        buttonList.add(new GuiButton(
+                BUTTON_CANCEL,
+                startX + (buttonWidth + gap) * 3,
+                buttonY,
+                buttonWidth,
+                BUTTON_HEIGHT,
                 "Cancel"));
         updateCoordinateSpace();
         rebuildElements();
@@ -100,7 +137,7 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     @Override
     public boolean doesGuiPauseGame() {
-        return false;
+        return true;
     }
 
     @Override
@@ -112,6 +149,11 @@ public final class OverlayPositionScreen extends GuiScreen {
             saveAndClose();
         } else if (button.id == BUTTON_RESET) {
             resetAll();
+            buildOpacityEntries();
+        } else if (button.id == BUTTON_PANEL) {
+            panelOpen = !panelOpen;
+            button.displayString =
+                    panelOpen ? "\u25B6 Panel" : "\u25C0 Panel";
         } else if (button.id == BUTTON_CANCEL) {
             cancelAndClose();
         }
@@ -122,7 +164,8 @@ public final class OverlayPositionScreen extends GuiScreen {
         updateCoordinateSpace();
         rebuildElements();
 
-        Gui.drawRect(0, 0, width, height, BACKGROUND);
+        Gui.drawRect(0, 0, width, height, 0xFF1A1A1A);
+        Gui.drawRect(0, 0, width, height, 0x66000000);
 
         int scaledMouseX = (int) Math.floor(mouseX / (double) overlayScale);
         int scaledMouseY = (int) Math.floor(mouseY / (double) overlayScale);
@@ -143,47 +186,68 @@ public final class OverlayPositionScreen extends GuiScreen {
             GlStateManager.popMatrix();
         }
 
-        drawPanel(mouseX, mouseY);
+        if (panelOpen) {
+            drawPanel(mouseX, mouseY);
+        }
 
-        int canvasWidth = Math.max(1, width - panelWidth());
         drawCenteredString(
                 fontRendererObj,
                 "Overlay Position Editor",
-                canvasWidth / 2,
-                6,
-                0xFFFFFFFF);
+                width / 2,
+                4,
+                HEADER_COLOR);
         String hint;
-        if (resizing) {
-            hint = "Drag the handle to resize the VHS corner frame";
+        if (activeResize != ResizeEdge.NONE) {
+            hint = "Drag to resize \u00B7 Release to confirm";
         } else if (draggedElement != null) {
-            hint = "Release to place  |  Shift + arrows moves 10 px";
+            hint = "Release to drop \u00B7 Coordinates update in real time";
         } else {
-            hint = "Drag to move  |  Right-click or R to reset  |  V toggles";
+            hint = "Drag to move \u00B7 Drag handles to resize "
+                    + "\u00B7 Right-click to reset \u00B7 ESC to cancel";
         }
         drawCenteredString(
                 fontRendererObj,
                 hint,
-                canvasWidth / 2,
-                18,
-                0xFFB5B5C2);
+                width / 2,
+                15,
+                HINT_COLOR);
+        if (overlayScale != 1.0F) {
+            drawCenteredString(
+                    fontRendererObj,
+                    "Scale " + Math.round(overlayScale * 100.0F) + "%",
+                    width / 2,
+                    26,
+                    0xFF777744);
+        }
 
-        if (draggedElement != null || resizeElement != null) {
+        if (draggedElement != null
+                || activeResize != ResizeEdge.NONE) {
             Element active = draggedElement != null
                     ? draggedElement
                     : resizeElement;
-            String value = active.label + "  "
-                    + active.x + "," + active.y;
-            if (resizing) {
-                value += "  " + active.w + "x" + active.h;
-            }
+            String value = activeResize != ResizeEdge.NONE
+                    ? active.id + " " + active.w + "\u00D7" + active.h
+                    : active.id + " " + displayCoordinates(active);
             int valueWidth = fontRendererObj.getStringWidth(value) + 8;
-            int tx = Math.min(
-                    mouseX + 12,
-                    Math.max(0, width - panelWidth() - valueWidth - 2));
-            int ty = Math.max(30, mouseY - 13);
-            Gui.drawRect(tx, ty, tx + valueWidth, ty + 12,
+            int tx = mouseX + 14;
+            int ty = mouseY - 14;
+            if (tx + valueWidth > width) {
+                tx = mouseX - valueWidth - 4;
+            }
+            if (ty < 0) {
+                ty = mouseY + 18;
+            }
+            Gui.drawRect(
+                    tx - 2,
+                    ty - 2,
+                    tx + valueWidth,
+                    ty + 12,
                     LABEL_BACKGROUND);
-            fontRendererObj.drawString(value, tx + 4, ty + 2, 0xFFB7FFBC);
+            fontRendererObj.drawStringWithShadow(
+                    value,
+                    tx + 2,
+                    ty,
+                    COORD_COLOR);
         }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
@@ -199,20 +263,20 @@ public final class OverlayPositionScreen extends GuiScreen {
     private void drawGuides() {
         int centerX = virtualWidth / 2;
         int centerY = virtualHeight / 2;
-        Gui.drawRect(centerX, 0, centerX + 1, virtualHeight, 0x38FFFFFF);
-        Gui.drawRect(0, centerY, virtualWidth, centerY + 1, 0x38FFFFFF);
+        Gui.drawRect(centerX, 0, centerX + 1, virtualHeight, 0x44FFFFFF);
+        Gui.drawRect(0, centerY, virtualWidth, centerY + 1, 0x44FFFFFF);
         Gui.drawRect(
                 virtualWidth / 3, 0, virtualWidth / 3 + 1,
-                virtualHeight, 0x20FFFFFF);
+                virtualHeight, 0x22FFFFFF);
         Gui.drawRect(
                 virtualWidth * 2 / 3, 0, virtualWidth * 2 / 3 + 1,
-                virtualHeight, 0x20FFFFFF);
+                virtualHeight, 0x22FFFFFF);
         Gui.drawRect(
                 0, virtualHeight / 3, virtualWidth,
-                virtualHeight / 3 + 1, 0x20FFFFFF);
+                virtualHeight / 3 + 1, 0x22FFFFFF);
         Gui.drawRect(
                 0, virtualHeight * 2 / 3, virtualWidth,
-                virtualHeight * 2 / 3 + 1, 0x20FFFFFF);
+                virtualHeight * 2 / 3 + 1, 0x22FFFFFF);
     }
 
     private void drawFilterPreview() {
@@ -271,21 +335,28 @@ public final class OverlayPositionScreen extends GuiScreen {
                         fontRendererObj.getStringWidth("PLAY >"),
                         fontRendererObj.getStringWidth("REC") + 12) + 8);
         int playHeight = config.vhsShowPlay ? 24 : 12;
-        elements.add(new Element(
+        Element play = new Element(
                 "PLAY/REC", "PLAY / REC",
                 config.hudPlayRecX,
                 config.hudPlayRecY,
-                playWidth,
-                playHeight));
+                config.hudPlayRecW > 0 ? config.hudPlayRecW : playWidth,
+                config.hudPlayRecH > 0 ? config.hudPlayRecH : playHeight);
+        play.resizable = true;
+        elements.add(play);
 
         int timestampWidth = fontRendererObj.getStringWidth("00:12:34") + 6;
-        elements.add(new Element(
+        int timestampActualWidth = config.hudTimestampW > 0
+                ? config.hudTimestampW
+                : timestampWidth;
+        Element timestamp = new Element(
                 "Timestamp", "Timestamp",
                 virtualWidth - Math.max(0, config.hudTimestampOffsetX)
-                        - timestampWidth,
+                        - timestampActualWidth,
                 config.hudTimestampY,
-                timestampWidth,
-                12));
+                timestampActualWidth,
+                config.hudTimestampH > 0 ? config.hudTimestampH : 12);
+        timestamp.resizable = true;
+        elements.add(timestamp);
 
         Element corners = new Element(
                 "Corners", "Corner frame",
@@ -297,12 +368,14 @@ public final class OverlayPositionScreen extends GuiScreen {
         elements.add(corners);
 
         int spWidth = fontRendererObj.getStringWidth("SP") + 6;
-        elements.add(new Element(
+        Element sp = new Element(
                 "SP", "SP",
                 config.hudSpX,
                 virtualHeight - config.hudSpOffsetY,
-                spWidth,
-                11));
+                config.hudSpW > 0 ? config.hudSpW : spWidth,
+                config.hudSpH > 0 ? config.hudSpH : 12);
+        sp.resizable = true;
+        elements.add(sp);
 
         int detailsHeight = 4;
         if (config.vhsShowDate) detailsHeight += 22;
@@ -312,14 +385,22 @@ public final class OverlayPositionScreen extends GuiScreen {
         if (config.vhsShowBattery) detailsHeight += 13;
         detailsHeight = Math.max(22, detailsHeight);
         int detailsWidth = 86;
-        elements.add(new Element(
+        int detailsActualWidth = config.hudDetailsW > 0
+                ? config.hudDetailsW
+                : detailsWidth;
+        int detailsActualHeight = config.hudDetailsH > 0
+                ? config.hudDetailsH
+                : detailsHeight;
+        Element details = new Element(
                 "Details", "Details",
                 virtualWidth - Math.max(0, config.hudDetailsOffsetX)
-                        - detailsWidth,
+                        - detailsActualWidth,
                 virtualHeight - Math.max(0, config.hudDetailsOffsetY)
-                        - detailsHeight,
-                detailsWidth,
-                detailsHeight));
+                        - detailsActualHeight,
+                detailsActualWidth,
+                detailsActualHeight);
+        details.resizable = true;
+        elements.add(details);
 
         String[] performanceLines = {
                 "Capture 60 FPS",
@@ -335,14 +416,22 @@ public final class OverlayPositionScreen extends GuiScreen {
         }
         performanceWidth += 10;
         int performanceHeight = performanceLines.length * 10 + 6;
-        elements.add(new Element(
+        int performanceActualWidth = config.hudPerfW > 0
+                ? config.hudPerfW
+                : performanceWidth;
+        int performanceActualHeight = config.hudPerfH > 0
+                ? config.hudPerfH
+                : performanceHeight;
+        Element performance = new Element(
                 "Perf", "Performance",
                 virtualWidth - Math.max(0, config.hudPerfOffsetX)
-                        - performanceWidth,
+                        - performanceActualWidth,
                 virtualHeight - Math.max(0, config.hudPerfOffsetY)
-                        - performanceHeight,
-                performanceWidth,
-                performanceHeight));
+                        - performanceActualHeight,
+                performanceActualWidth,
+                performanceActualHeight);
+        performance.resizable = true;
+        elements.add(performance);
     }
 
     private void addClassicElement(RecordableConfig config) {
@@ -411,7 +500,7 @@ public final class OverlayPositionScreen extends GuiScreen {
         }
         for (int index = 0; index < config.watermarkSlots.size(); index++) {
             WatermarkSlot slot = config.watermarkSlots.get(index);
-            if (slot == null) {
+            if (slot == null || !slot.enabled) {
                 continue;
             }
             String preview = watermarkPreviewText(slot);
@@ -468,19 +557,218 @@ public final class OverlayPositionScreen extends GuiScreen {
         return ordered;
     }
 
+    private void buildOpacityEntries() {
+        opacityEntries.clear();
+        final RecordableConfig config = RecordableConfig.get();
+        RecordableConfig.OverlayStyleHud style = config.overlayStyleHud;
+        if (style == RecordableConfig.OverlayStyleHud.VHS) {
+            opacityEntries.add(new OpacityEntry(
+                    "PLAY/REC", "REC",
+                    () -> Integer.valueOf(config.hudPlayRecOpacity),
+                    value -> config.hudPlayRecOpacity = value.intValue()));
+            opacityEntries.add(new OpacityEntry(
+                    "Timestamp", "Time",
+                    () -> Integer.valueOf(config.hudTimestampOpacity),
+                    value -> config.hudTimestampOpacity = value.intValue()));
+            opacityEntries.add(new OpacityEntry(
+                    "Corners", "Corners",
+                    () -> Integer.valueOf(config.hudCornersOpacity),
+                    value -> config.hudCornersOpacity = value.intValue()));
+            opacityEntries.add(new OpacityEntry(
+                    "SP", "SP",
+                    () -> Integer.valueOf(config.hudSpOpacity),
+                    value -> config.hudSpOpacity = value.intValue()));
+            opacityEntries.add(new OpacityEntry(
+                    "Details", "Details",
+                    () -> Integer.valueOf(config.hudDetailsOpacity),
+                    value -> config.hudDetailsOpacity = value.intValue()));
+            opacityEntries.add(new OpacityEntry(
+                    "Perf", "Perf",
+                    () -> Integer.valueOf(config.hudPerfOpacity),
+                    value -> config.hudPerfOpacity = value.intValue()));
+        }
+        opacityEntries.add(new OpacityEntry(
+                "Filter:VHS", "VHS",
+                () -> Integer.valueOf(config.filterVhsIntensity),
+                value -> config.filterVhsIntensity = value.intValue()));
+        opacityEntries.add(new OpacityEntry(
+                "Filter:LCD_MOIRE", "LCD Moire",
+                () -> Integer.valueOf(config.filterLcdMoireIntensity),
+                value -> config.filterLcdMoireIntensity = value.intValue()));
+        opacityEntries.add(new OpacityEntry(
+                "Filter:CRT", "CRT",
+                () -> Integer.valueOf(config.filterCrtIntensity),
+                value -> config.filterCrtIntensity = value.intValue()));
+    }
+
+    private List<String> shownLayers() {
+        List<String> shown = new ArrayList<String>();
+        for (String id : layerOrder) {
+            if (rowApplicable(PanelRow.layer(id))) {
+                shown.add(id);
+            }
+        }
+        return shown;
+    }
+
+    private void moveShownLayer(
+            List<String> shown, int index, int direction) {
+        int target = index + direction;
+        if (index < 0
+                || target < 0
+                || index >= shown.size()
+                || target >= shown.size()) {
+            return;
+        }
+        int fullIndex = layerOrder.indexOf(shown.get(index));
+        int fullTarget = layerOrder.indexOf(shown.get(target));
+        if (fullIndex < 0 || fullTarget < 0) {
+            return;
+        }
+        Collections.swap(layerOrder, fullIndex, fullTarget);
+        RecordableConfig config = RecordableConfig.get();
+        config.hudLayerOrder = join(layerOrder);
+        config.save();
+    }
+
+    private static String elementIcon(String id) {
+        if ("PLAY/REC".equals(id)) return "\u25CF";
+        if ("Timestamp".equals(id)) return "\u23F1";
+        if ("Details".equals(id)) return "\u2139";
+        if ("SP".equals(id)) return "\u25B6";
+        if ("Perf".equals(id)) return "\u2261";
+        if ("Corners".equals(id)) return "\u2B1C";
+        if ("Mic".equals(id)) return "\uD83C\uDFA4";
+        if ("Classic".equals(id) || "Synthwave".equals(id)) {
+            return "\u25A4";
+        }
+        if ("Filter:VHS".equals(id)
+                || "Filter:LCD_MOIRE".equals(id)
+                || "Filter:CRT".equals(id)) {
+            return "\u25A3";
+        }
+        return "\u2022";
+    }
+
+    private static String layerDisplayName(String id) {
+        if ("Filter:VHS".equals(id)) return "VHS Filter";
+        if ("Filter:LCD_MOIRE".equals(id)) return "LCD Moire Filter";
+        if ("Filter:CRT".equals(id)) return "CRT Filter";
+        return id;
+    }
+
+    private String displayCoordinates(Element element) {
+        if ("Timestamp".equals(element.id)) {
+            return "\u2190" + element.x + " " + element.y;
+        }
+        if ("SP".equals(element.id)) {
+            return element.x + " \u2191" + element.y;
+        }
+        if ("Details".equals(element.id)
+                || "Perf".equals(element.id)) {
+            return "\u2190" + element.x + " \u2191" + element.y;
+        }
+        if ("Corners".equals(element.id)) {
+            return element.x + "," + element.y + " "
+                    + element.w + "\u00D7" + element.h;
+        }
+        return element.x + "," + element.y;
+    }
+
+    private ResizeEdge hitTestResizeHandle(
+            Element element, int mouseX, int mouseY) {
+        if (!element.resizable) {
+            return ResizeEdge.NONE;
+        }
+        int size = RESIZE_HANDLE;
+        if (mouseX >= element.x - size
+                && mouseX <= element.x + size
+                && mouseY >= element.y - size
+                && mouseY <= element.y + size) {
+            return ResizeEdge.TOP_LEFT;
+        }
+        if (mouseX >= element.x + element.w - size
+                && mouseX <= element.x + element.w + size
+                && mouseY >= element.y - size
+                && mouseY <= element.y + size) {
+            return ResizeEdge.TOP_RIGHT;
+        }
+        if (mouseX >= element.x - size
+                && mouseX <= element.x + size
+                && mouseY >= element.y + element.h - size
+                && mouseY <= element.y + element.h + size) {
+            return ResizeEdge.BOTTOM_LEFT;
+        }
+        if (mouseX >= element.x + element.w - size
+                && mouseX <= element.x + element.w + size
+                && mouseY >= element.y + element.h - size
+                && mouseY <= element.y + element.h + size) {
+            return ResizeEdge.BOTTOM_RIGHT;
+        }
+        return ResizeEdge.NONE;
+    }
+
+    private static boolean nearCornerBracket(
+            Element element, int mouseX, int mouseY) {
+        int zone = 40;
+        boolean nearTopLeft = mouseX < element.x + zone
+                && mouseY < element.y + zone;
+        boolean nearTopRight = mouseX > element.x + element.w - zone
+                && mouseY < element.y + zone;
+        boolean nearBottomLeft = mouseX < element.x + zone
+                && mouseY > element.y + element.h - zone;
+        boolean nearBottomRight = mouseX > element.x + element.w - zone
+                && mouseY > element.y + element.h - zone;
+        return nearTopLeft || nearTopRight
+                || nearBottomLeft || nearBottomRight;
+    }
+
+    private void openWatermarkEditor() {
+        if (mc != null) {
+            openingWatermarkEditor = true;
+            mc.displayGuiScreen(new WatermarkScreen(this));
+        }
+    }
+
     private void updateHover(
             int mouseX, int mouseY, int scaledMouseX, int scaledMouseY) {
         hoveredElement = null;
-        if (draggedElement != null || resizing || mouseX >= panelLeft()) {
+        hoveredResize = ResizeEdge.NONE;
+        if (draggedElement != null
+                || activeResize != ResizeEdge.NONE
+                || panelOpen
+                        && mouseX >= width - PANEL_WIDTH - 10) {
             return;
         }
         List<Element> ordered = orderedElements();
+        for (int index = ordered.size() - 1; index >= 0; index--) {
+            Element element = ordered.get(index);
+            if (!isElementVisible(element) || !element.resizable) {
+                continue;
+            }
+            ResizeEdge edge = hitTestResizeHandle(
+                    element,
+                    scaledMouseX,
+                    scaledMouseY);
+            if (edge != ResizeEdge.NONE) {
+                hoveredResize = edge;
+                hoveredElement = element;
+                return;
+            }
+        }
         for (int index = ordered.size() - 1; index >= 0; index--) {
             Element element = ordered.get(index);
             if (!isElementVisible(element)) {
                 continue;
             }
             if (element.contains(scaledMouseX, scaledMouseY)) {
+                if ("Corners".equals(element.id)
+                        && !nearCornerBracket(
+                                element,
+                                scaledMouseX,
+                                scaledMouseY)) {
+                    continue;
+                }
                 hoveredElement = element;
                 return;
             }
@@ -489,28 +777,54 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     private void drawElement(Element element) {
         boolean visible = isElementVisible(element);
-        boolean selected = isSelected(element);
         boolean hovered = sameElement(element, hoveredElement);
         boolean dragged = sameElement(element, draggedElement);
-        boolean activeResize = sameElement(element, resizeElement);
+        boolean resizing = activeResize != ResizeEdge.NONE
+                && sameElement(element, resizeElement);
 
         if (visible) {
             drawElementContent(element);
+        } else {
+            int ghostBorder = 0x33FF4444;
+            Gui.drawRect(
+                    element.x,
+                    element.y,
+                    element.x + element.w,
+                    element.y + element.h,
+                    0x08FF4444);
+            drawBorder(
+                    element.x,
+                    element.y,
+                    element.x + element.w,
+                    element.y + element.h,
+                    ghostBorder);
+            String hiddenLabel = "\u2298 " + element.id;
+            int hiddenWidth =
+                    fontRendererObj.getStringWidth(hiddenLabel) + 4;
+            int hiddenY = element.y - 10;
+            if (hiddenY < 0) {
+                hiddenY = element.y + element.h + 1;
+            }
+            Gui.drawRect(
+                    element.x,
+                    hiddenY,
+                    element.x + hiddenWidth,
+                    hiddenY + 9,
+                    0x66000000);
+            fontRendererObj.drawStringWithShadow(
+                    hiddenLabel,
+                    element.x + 2,
+                    hiddenY + 1,
+                    0x55FF6666);
+            return;
         }
 
-        int border;
-        if (dragged || activeResize || selected) {
-            border = BORDER_SELECTED;
-        } else if (hovered) {
-            border = BORDER_HOVER;
-        } else if (!visible) {
-            border = GHOST_BORDER;
-        } else {
-            border = BORDER_IDLE;
-        }
-        int fill = !visible
-                ? 0x10FF5555
-                : (selected ? 0x2255FF77 : (hovered ? 0x20FFFF55 : 0x0CFFFFFF));
+        int border = dragged || resizing
+                ? BORDER_SELECTED
+                : hovered ? BORDER_HOVER : BORDER_IDLE;
+        int fill = dragged || resizing
+                ? SELECTED_FILL
+                : hovered ? 0x18FFFF00 : 0x08FFFFFF;
         Gui.drawRect(
                 element.x, element.y,
                 element.x + element.w, element.y + element.h,
@@ -520,8 +834,12 @@ public final class OverlayPositionScreen extends GuiScreen {
                 element.x + element.w, element.y + element.h,
                 border);
 
-        String tag = (visible ? "" : "[OFF] ") + element.label;
-        int tagWidth = fontRendererObj.getStringWidth(tag) + 5;
+        if (element.resizable) {
+            drawResizeHandles(element, hovered);
+        }
+
+        String tag = elementIcon(element.id) + " " + element.id;
+        int tagWidth = fontRendererObj.getStringWidth(tag) + 4;
         int tagY = element.y - 10;
         if (tagY < 0) {
             tagY = element.y + element.h + 1;
@@ -530,16 +848,54 @@ public final class OverlayPositionScreen extends GuiScreen {
                 element.x, tagY,
                 element.x + tagWidth, tagY + 10,
                 LABEL_BACKGROUND);
-        fontRendererObj.drawString(tag, element.x + 2, tagY + 1, border);
+        fontRendererObj.drawStringWithShadow(
+                tag,
+                element.x + 2,
+                tagY + 1,
+                border);
+    }
 
-        if (element.resizable && (selected || hovered || resizing)) {
-            Gui.drawRect(
-                    element.x + element.w - RESIZE_HANDLE,
-                    element.y + element.h - RESIZE_HANDLE,
-                    element.x + element.w + 1,
-                    element.y + element.h + 1,
-                    0xFFFF9A46);
-        }
+    private void drawResizeHandles(Element element, boolean hovered) {
+        int half = RESIZE_HANDLE / 2;
+        drawHandle(
+                element.x - half,
+                element.y - half,
+                hovered && hoveredResize == ResizeEdge.TOP_LEFT
+                        ? RESIZE_HANDLE_COLOR
+                        : 0x88FFFFFF);
+        drawHandle(
+                element.x + element.w - half,
+                element.y - half,
+                hovered && hoveredResize == ResizeEdge.TOP_RIGHT
+                        ? RESIZE_HANDLE_COLOR
+                        : 0x88FFFFFF);
+        drawHandle(
+                element.x - half,
+                element.y + element.h - half,
+                hovered && hoveredResize == ResizeEdge.BOTTOM_LEFT
+                        ? RESIZE_HANDLE_COLOR
+                        : 0x88FFFFFF);
+        drawHandle(
+                element.x + element.w - half,
+                element.y + element.h - half,
+                hovered && hoveredResize == ResizeEdge.BOTTOM_RIGHT
+                        ? RESIZE_HANDLE_COLOR
+                        : 0x88FFFFFF);
+    }
+
+    private static void drawHandle(int x, int y, int color) {
+        Gui.drawRect(
+                x,
+                y,
+                x + RESIZE_HANDLE,
+                y + RESIZE_HANDLE,
+                color);
+        drawBorder(
+                x,
+                y,
+                x + RESIZE_HANDLE,
+                y + RESIZE_HANDLE,
+                0xAA000000);
     }
 
     private void drawElementContent(Element element) {
@@ -757,163 +1113,388 @@ public final class OverlayPositionScreen extends GuiScreen {
         }
     }
 
-    private void drawPanel(int mouseX, int mouseY) {
-        int left = panelLeft();
-        int right = width;
-        int sliderTop = sliderTop();
-        int listBottom = sliderTop - 5;
-
-        Gui.drawRect(left, PANEL_TOP, right, height, PANEL_BACKGROUND);
-        Gui.drawRect(left, PANEL_TOP, left + 1, height, PANEL_BORDER);
-        Gui.drawRect(left, PANEL_TOP, right, PANEL_TOP + 1, PANEL_BORDER);
-        fontRendererObj.drawString(
-                "Layers: back  ->  front",
-                left + 7,
-                PANEL_TOP + 7,
-                0xFFFFFFFF);
-
-        List<PanelRow> rows = panelRows();
-        clampPanelScroll(rows.size(), listBottom - LIST_TOP);
-        for (int index = 0; index < rows.size(); index++) {
-            int rowY = LIST_TOP + index * ROW_HEIGHT - panelScroll;
-            if (rowY < LIST_TOP || rowY + ROW_HEIGHT > listBottom) {
-                continue;
-            }
-            drawPanelRow(
-                    rows.get(index), index,
-                    left, right, rowY, mouseX, mouseY);
+    private int officialPanelContentHeight() {
+        int contentHeight = ROW_HEIGHT;
+        if (layersOpen) {
+            contentHeight += shownLayers().size() * ROW_HEIGHT;
         }
-
-        int totalHeight = rows.size() * ROW_HEIGHT;
-        int visibleHeight = Math.max(1, listBottom - LIST_TOP);
-        if (totalHeight > visibleHeight) {
-            int trackX = right - 3;
-            Gui.drawRect(trackX, LIST_TOP, right - 1, listBottom,
-                    0x55333344);
-            int thumbHeight = Math.max(
-                    12,
-                    visibleHeight * visibleHeight / totalHeight);
-            int maximumScroll = totalHeight - visibleHeight;
-            int thumbTravel = visibleHeight - thumbHeight;
-            int thumbY = LIST_TOP + (maximumScroll <= 0
-                    ? 0
-                    : panelScroll * thumbTravel / maximumScroll);
-            Gui.drawRect(
-                    trackX, thumbY,
-                    right - 1, thumbY + thumbHeight,
-                    ACCENT);
+        contentHeight += 2;
+        contentHeight += 2;
+        contentHeight += ROW_HEIGHT;
+        if (opacityOpen) {
+            contentHeight += opacityEntries.size() * (ROW_HEIGHT - 1);
         }
-
-        Gui.drawRect(left + 1, sliderTop - 1, right, sliderTop,
-                PANEL_BORDER);
-        drawOpacityControl(left, right, sliderTop);
+        contentHeight += 2;
+        contentHeight += ROW_HEIGHT;
+        if (watermarksOpen) {
+            List<WatermarkSlot> slots =
+                    RecordableConfig.get().watermarkSlots;
+            int rows = slots == null || slots.isEmpty()
+                    ? 1
+                    : slots.size();
+            contentHeight += rows * ROW_HEIGHT;
+            contentHeight += ROW_HEIGHT;
+        }
+        contentHeight += 4;
+        return contentHeight;
     }
 
-    private void drawPanelRow(
-            PanelRow row,
-            int rowIndex,
-            int left,
-            int right,
-            int rowY,
+    private int officialPanelHeight() {
+        int maximumHeight = Math.max(1, height - 68);
+        return Math.min(
+                maximumHeight,
+                officialPanelContentHeight() + 4);
+    }
+
+    private void clampOfficialPanelScroll() {
+        int maximum = Math.max(
+                0,
+                officialPanelContentHeight() + 4
+                        - officialPanelHeight());
+        panelScroll = clamp(panelScroll, 0, maximum);
+    }
+
+    private void drawPanel(int mouseX, int mouseY) {
+        RecordableConfig config = RecordableConfig.get();
+        int panelX = width - PANEL_WIDTH - 4;
+        int panelHeight = officialPanelHeight();
+        int panelBottom = PANEL_TOP + panelHeight;
+        ThemeColors theme = ThemeEngine.get().colors();
+
+        Gui.drawRect(
+                panelX - 1,
+                PANEL_TOP - 1,
+                panelX + PANEL_WIDTH + 1,
+                panelBottom + 1,
+                theme.panelBorder);
+        Gui.drawRect(
+                panelX,
+                PANEL_TOP,
+                panelX + PANEL_WIDTH,
+                panelBottom,
+                theme.panelBackground);
+
+        clampOfficialPanelScroll();
+        int y = PANEL_TOP + 2 - panelScroll;
+        int innerWidth = PANEL_WIDTH - 6;
+        int left = panelX + 3;
+
+        y = drawSectionHeader(
+                layersOpen ? "\u25BE Layers" : "\u25B8 Layers",
+                layersOpen,
+                left,
+                y,
+                innerWidth,
+                mouseX,
+                mouseY,
+                panelBottom);
+        if (layersOpen) {
+            List<String> shown = shownLayers();
+            for (int index = 0; index < shown.size(); index++) {
+                String id = shown.get(index);
+                boolean visible = rowVisible(PanelRow.layer(id));
+                if (y >= PANEL_TOP
+                        && y + ROW_HEIGHT <= panelBottom) {
+                    boolean elementHovered = hoveredElement != null
+                            && hoveredElement.id.equals(id);
+                    boolean rowHovered = mouseX >= left
+                            && mouseX <= left + innerWidth
+                            && mouseY >= y
+                            && mouseY < y + ROW_HEIGHT;
+                    if (elementHovered) {
+                        Gui.drawRect(
+                                left,
+                                y,
+                                left + innerWidth,
+                                y + ROW_HEIGHT - 1,
+                                0x22FFFF44);
+                    } else if (rowHovered) {
+                        Gui.drawRect(
+                                left,
+                                y,
+                                left + innerWidth,
+                                y + ROW_HEIGHT - 1,
+                                0x12FFFFFF);
+                    }
+
+                    int eyeX = left + 1;
+                    boolean eyeHovered = mouseX >= eyeX
+                            && mouseX <= eyeX + 10
+                            && mouseY >= y
+                            && mouseY < y + ROW_HEIGHT;
+                    fontRendererObj.drawStringWithShadow(
+                            visible ? "\u25C9" : "\u25CE",
+                            eyeX,
+                            y + 3,
+                            visible
+                                    ? eyeHovered
+                                            ? 0xFFAAFFAA
+                                            : 0xFF66BB66
+                                    : eyeHovered
+                                            ? 0xFFFF8888
+                                            : 0xFF884444);
+
+                    String display = elementIcon(id) + " "
+                            + fontRendererObj.trimStringToWidth(
+                                    layerDisplayName(id),
+                                    innerWidth - 42);
+                    fontRendererObj.drawStringWithShadow(
+                            display,
+                            left + 13,
+                            y + 3,
+                            visible
+                                    ? elementHovered
+                                            ? 0xFFFFFF88
+                                            : 0xFFCCCCCC
+                                    : 0xFF666666);
+
+                    int arrowX = left + innerWidth - 14;
+                    if (index > 0) {
+                        boolean hovered = mouseX >= arrowX
+                                && mouseX <= arrowX + 10
+                                && mouseY >= y
+                                && mouseY <= y + 7;
+                        fontRendererObj.drawStringWithShadow(
+                                "\u25B2",
+                                arrowX,
+                                y,
+                                hovered
+                                        ? 0xFFFFFF44
+                                        : 0xFF555555);
+                    }
+                    if (index < shown.size() - 1) {
+                        boolean hovered = mouseX >= arrowX
+                                && mouseX <= arrowX + 10
+                                && mouseY >= y + 8
+                                && mouseY <= y + ROW_HEIGHT;
+                        fontRendererObj.drawStringWithShadow(
+                                "\u25BC",
+                                arrowX,
+                                y + 8,
+                                hovered
+                                        ? 0xFFFFFF44
+                                        : 0xFF555555);
+                    }
+                }
+                y += ROW_HEIGHT;
+            }
+        }
+
+        y = drawSectionHeader(
+                opacityOpen ? "\u25BE Opacity" : "\u25B8 Opacity",
+                opacityOpen,
+                left,
+                y,
+                innerWidth,
+                mouseX,
+                mouseY,
+                panelBottom);
+        if (opacityOpen) {
+            for (OpacityEntry entry : opacityEntries) {
+                if (y >= PANEL_TOP
+                        && y + ROW_HEIGHT - 2 <= panelBottom) {
+                    drawOpacityRow(
+                            entry,
+                            left,
+                            y,
+                            innerWidth,
+                            mouseX,
+                            mouseY);
+                }
+                y += ROW_HEIGHT - 1;
+            }
+        }
+
+        if (y >= PANEL_TOP && y + 2 <= panelBottom) {
+            Gui.drawRect(
+                    left + 4,
+                    y,
+                    left + innerWidth - 4,
+                    y + 1,
+                    0x33FFFFFF);
+        }
+        y += 2;
+
+        y = drawSectionHeader(
+                watermarksOpen
+                        ? "\u25BE Watermarks"
+                        : "\u25B8 Watermarks",
+                watermarksOpen,
+                left,
+                y,
+                innerWidth,
+                mouseX,
+                mouseY,
+                panelBottom);
+        if (watermarksOpen) {
+            List<WatermarkSlot> slots = config.watermarkSlots;
+            if (slots == null || slots.isEmpty()) {
+                if (y >= PANEL_TOP
+                        && y + ROW_HEIGHT <= panelBottom) {
+                    fontRendererObj.drawStringWithShadow(
+                            "  (none - add below)",
+                            left + 2,
+                            y + 3,
+                            0xFF777777);
+                }
+                y += ROW_HEIGHT;
+            } else {
+                for (WatermarkSlot slot : slots) {
+                    boolean enabled = slot != null && slot.enabled;
+                    if (y >= PANEL_TOP
+                            && y + ROW_HEIGHT <= panelBottom) {
+                        boolean rowHovered = mouseX >= left
+                                && mouseX <= left + innerWidth
+                                && mouseY >= y
+                                && mouseY < y + ROW_HEIGHT;
+                        if (rowHovered) {
+                            Gui.drawRect(
+                                    left,
+                                    y,
+                                    left + innerWidth,
+                                    y + ROW_HEIGHT - 1,
+                                    0x12FFFFFF);
+                        }
+                        int eyeX = left + 1;
+                        boolean eyeHovered = mouseX >= eyeX
+                                && mouseX <= eyeX + 12
+                                && mouseY >= y
+                                && mouseY < y + ROW_HEIGHT;
+                        fontRendererObj.drawStringWithShadow(
+                                enabled ? "\u25C9" : "\u25CE",
+                                eyeX,
+                                y + 3,
+                                enabled
+                                        ? eyeHovered
+                                                ? 0xFFAAFFAA
+                                                : 0xFF66BB66
+                                        : eyeHovered
+                                                ? 0xFFFF8888
+                                                : 0xFF884444);
+                        String name = slot != null
+                                && !isBlank(slot.name)
+                                ? slot.name
+                                : "Watermark";
+                        String display = "\u25A4 "
+                                + fontRendererObj.trimStringToWidth(
+                                        name,
+                                        innerWidth - 42);
+                        fontRendererObj.drawStringWithShadow(
+                                display,
+                                left + 13,
+                                y + 3,
+                                enabled
+                                        ? 0xFFCCCCCC
+                                        : 0xFF777777);
+                        int editX = left + innerWidth - 22;
+                        boolean editHovered = mouseX >= editX
+                                && mouseX <= editX + 20
+                                && mouseY >= y
+                                && mouseY < y + ROW_HEIGHT;
+                        fontRendererObj.drawStringWithShadow(
+                                "Edit",
+                                editX,
+                                y + 3,
+                                editHovered
+                                        ? 0xFFFFCC44
+                                        : 0xFF8899BB);
+                    }
+                    y += ROW_HEIGHT;
+                }
+            }
+            if (y >= PANEL_TOP
+                    && y + ROW_HEIGHT <= panelBottom) {
+                boolean hovered = mouseX >= left
+                        && mouseX <= left + innerWidth
+                        && mouseY >= y
+                        && mouseY < y + ROW_HEIGHT;
+                fontRendererObj.drawStringWithShadow(
+                        "\u2795 Open Watermark Editor",
+                        left + 4,
+                        y + 3,
+                        hovered ? 0xFF66CCFF : 0xFF6699CC);
+            }
+        }
+    }
+
+    private int drawSectionHeader(
+            String label,
+            boolean open,
+            int x,
+            int y,
+            int sectionWidth,
+            int mouseX,
+            int mouseY,
+            int panelBottom) {
+        if (y >= PANEL_TOP && y + ROW_HEIGHT <= panelBottom) {
+            boolean hovered = mouseX >= x
+                    && mouseX <= x + sectionWidth
+                    && mouseY >= y
+                    && mouseY < y + ROW_HEIGHT;
+            ThemeColors theme = ThemeEngine.get().colors();
+            Gui.drawRect(
+                    x,
+                    y,
+                    x + sectionWidth,
+                    y + ROW_HEIGHT - 1,
+                    hovered
+                            ? theme.sectionHover
+                            : theme.sectionBackground);
+            Gui.drawRect(
+                    x,
+                    y + 2,
+                    x + 2,
+                    y + ROW_HEIGHT - 3,
+                    theme.accent);
+            fontRendererObj.drawStringWithShadow(
+                    label,
+                    x + 5,
+                    y + 4,
+                    theme.accent);
+        }
+        return y + ROW_HEIGHT;
+    }
+
+    private void drawOpacityRow(
+            OpacityEntry entry,
+            int x,
+            int y,
+            int rowWidth,
             int mouseX,
             int mouseY) {
-        boolean selected = isSelected(row);
-        boolean hovered = mouseX >= left
-                && mouseX < right
-                && mouseY >= rowY
-                && mouseY < rowY + ROW_HEIGHT;
-        int background = selected
-                ? ROW_SELECTED
-                : (hovered ? ROW_HOVER : ROW_BACKGROUND);
+        int value = clamp(entry.getter.get().intValue(), 0, 100);
+        fontRendererObj.drawStringWithShadow(
+                entry.label + " " + value + "%",
+                x + 2,
+                y + 1,
+                0xFFAAAAAA);
+        int barX = x + 2;
+        int barY = y + 10;
+        int barWidth = rowWidth - 4;
         Gui.drawRect(
-                left + 3, rowY,
-                right - 4, rowY + ROW_HEIGHT - 1,
-                background);
-
-        boolean visible = rowVisible(row);
-        int textColor = rowApplicable(row)
-                ? 0xFFE4E4EC
-                : 0xFF777783;
-        fontRendererObj.drawString(
-                visible ? "[x]" : "[ ]",
-                left + 6,
-                rowY + 4,
-                visible ? 0xFF7CFF91 : 0xFFFF7777);
-        String label = trim(
-                rowLabel(row),
-                Math.max(20, panelWidth() - 67));
-        fontRendererObj.drawString(
-                label,
-                left + 27,
-                rowY + 4,
-                textColor);
-
-        if (row.type != RowType.WATERMARK_MASTER) {
-            int backX = right - 29;
-            int frontX = right - 16;
-            fontRendererObj.drawString(
-                    "<", backX, rowY + 4,
-                    canMove(row, -1) ? 0xFFFFFFFF : 0xFF55555D);
-            fontRendererObj.drawString(
-                    ">", frontX, rowY + 4,
-                    canMove(row, 1) ? 0xFFFFFFFF : 0xFF55555D);
+                barX,
+                barY,
+                barX + barWidth,
+                barY + 3,
+                0xFF222222);
+        int filled = (int) (barWidth * value / 100.0D);
+        Gui.drawRect(
+                barX,
+                barY,
+                barX + filled,
+                barY + 3,
+                ThemeEngine.get().colors().accent);
+        if (mouseX >= barX
+                && mouseX <= barX + barWidth
+                && mouseY >= y
+                && mouseY <= y + ROW_HEIGHT - 2) {
+            Gui.drawRect(
+                    barX + filled - 1,
+                    barY - 1,
+                    barX + filled + 2,
+                    barY + 4,
+                    0xFFFFFFFF);
         }
-    }
-
-    private void drawOpacityControl(int left, int right, int top) {
-        Integer opacity = selectedOpacity();
-        String selectedName = selectedName();
-        if (selectedName == null) {
-            fontRendererObj.drawString(
-                    "Select a layer",
-                    left + 7,
-                    top + 5,
-                    0xFF9999A5);
-            fontRendererObj.drawString(
-                    "Eye toggles visibility; < > reorders",
-                    left + 7,
-                    top + 18,
-                    0xFF777784);
-            return;
-        }
-
-        fontRendererObj.drawString(
-                trim(selectedName, panelWidth() - 68),
-                left + 7,
-                top + 5,
-                0xFFFFFFFF);
-        if (opacity == null) {
-            fontRendererObj.drawString(
-                    "No opacity control",
-                    left + 7,
-                    top + 19,
-                    0xFF888894);
-            return;
-        }
-
-        String percent = opacity + "%";
-        fontRendererObj.drawString(
-                percent,
-                right - fontRendererObj.getStringWidth(percent) - 7,
-                top + 5,
-                0xFFCCCCD5);
-        int barLeft = left + 7;
-        int barRight = right - 7;
-        int barTop = top + 20;
-        Gui.drawRect(
-                barLeft, barTop,
-                barRight, barTop + 7,
-                0xFF32323D);
-        int filled = (barRight - barLeft)
-                * clamp(opacity.intValue(), 0, 100) / 100;
-        Gui.drawRect(
-                barLeft, barTop,
-                barLeft + filled, barTop + 7,
-                ACCENT);
-        Gui.drawRect(
-                barLeft + filled - 1, barTop - 2,
-                barLeft + filled + 1, barTop + 9,
-                0xFFFFFFFF);
     }
 
     @Override
@@ -924,7 +1505,7 @@ public final class OverlayPositionScreen extends GuiScreen {
             return;
         }
 
-        if (mouseX >= panelLeft()) {
+        if (panelOpen && mouseX >= width - PANEL_WIDTH - 10) {
             handlePanelClick(mouseX, mouseY, mouseButton);
             return;
         }
@@ -935,12 +1516,18 @@ public final class OverlayPositionScreen extends GuiScreen {
 
         for (int index = ordered.size() - 1; index >= 0; index--) {
             Element element = ordered.get(index);
-            if (element.resizable
-                    && nearResizeHandle(element, scaledX, scaledY)
-                    && mouseButton == 0) {
+            ResizeEdge edge = hitTestResizeHandle(
+                    element,
+                    scaledX,
+                    scaledY);
+            if (edge != ResizeEdge.NONE && mouseButton == 0) {
                 select(element);
-                resizing = true;
+                activeResize = edge;
                 resizeElement = element;
+                resizeOriginalX = element.x;
+                resizeOriginalY = element.y;
+                resizeOriginalWidth = element.w;
+                resizeOriginalHeight = element.h;
                 return;
             }
         }
@@ -948,7 +1535,17 @@ public final class OverlayPositionScreen extends GuiScreen {
         Element clicked = null;
         for (int index = ordered.size() - 1; index >= 0; index--) {
             Element element = ordered.get(index);
+            if (!isElementVisible(element)) {
+                continue;
+            }
             if (element.contains(scaledX, scaledY)) {
+                if ("Corners".equals(element.id)
+                        && !nearCornerBracket(
+                                element,
+                                scaledX,
+                                scaledY)) {
+                    continue;
+                }
                 clicked = element;
                 break;
             }
@@ -968,50 +1565,135 @@ public final class OverlayPositionScreen extends GuiScreen {
     }
 
     private void handlePanelClick(int mouseX, int mouseY, int mouseButton) {
-        int left = panelLeft();
-        int right = width;
-        int opacityBarTop = sliderTop() + 18;
-        if (mouseY >= opacityBarTop
-                && mouseY <= opacityBarTop + 12
-                && selectedOpacity() != null
+        RecordableConfig config = RecordableConfig.get();
+        int panelX = width - PANEL_WIDTH - 4;
+        int innerWidth = PANEL_WIDTH - 6;
+        int left = panelX + 3;
+        int y = PANEL_TOP + 2 - panelScroll;
+
+        if (mouseY >= y
+                && mouseY < y + ROW_HEIGHT
+                && mouseX >= left
+                && mouseX <= left + innerWidth
                 && mouseButton == 0) {
-            opacityDragging = true;
-            setOpacityFromMouse(mouseX);
+            layersOpen = !layersOpen;
             return;
         }
+        y += ROW_HEIGHT;
 
-        int listBottom = sliderTop() - 5;
-        if (mouseY < LIST_TOP || mouseY >= listBottom) {
-            return;
+        if (layersOpen) {
+            List<String> shown = shownLayers();
+            for (int index = 0; index < shown.size(); index++) {
+                String id = shown.get(index);
+                if (mouseY >= y
+                        && mouseY < y + ROW_HEIGHT
+                        && mouseButton == 0) {
+                    int eyeX = left + 1;
+                    if (mouseX >= eyeX && mouseX <= eyeX + 12) {
+                        toggleLayer(id);
+                        config.save();
+                        return;
+                    }
+                    int arrowX = left + innerWidth - 14;
+                    if (index > 0
+                            && mouseX >= arrowX
+                            && mouseX <= arrowX + 14
+                            && mouseY < y + 8) {
+                        moveShownLayer(shown, index, -1);
+                        return;
+                    }
+                    if (index < shown.size() - 1
+                            && mouseX >= arrowX
+                            && mouseX <= arrowX + 14
+                            && mouseY >= y + 8) {
+                        moveShownLayer(shown, index, 1);
+                        return;
+                    }
+                }
+                y += ROW_HEIGHT;
+            }
         }
-        List<PanelRow> rows = panelRows();
-        int index = (mouseY - LIST_TOP + panelScroll) / ROW_HEIGHT;
-        if (index < 0 || index >= rows.size()) {
-            return;
-        }
-        int rowY = LIST_TOP + index * ROW_HEIGHT - panelScroll;
-        if (rowY < LIST_TOP || rowY + ROW_HEIGHT > listBottom) {
-            return;
-        }
+        y += 2;
 
-        PanelRow row = rows.get(index);
-        select(row);
-        if (mouseButton == 1) {
-            resetRow(row);
+        if (mouseY >= y
+                && mouseY < y + ROW_HEIGHT
+                && mouseX >= left
+                && mouseX <= left + innerWidth
+                && mouseButton == 0) {
+            opacityOpen = !opacityOpen;
             return;
         }
-        if (mouseButton != 0) {
-            return;
-        }
+        y += ROW_HEIGHT;
 
-        if (mouseX < left + 25) {
-            toggleRow(row);
-        } else if (mouseX >= right - 34 && mouseX < right - 21) {
-            moveRow(row, -1);
-        } else if (mouseX >= right - 21) {
-            moveRow(row, 1);
-        } else if (row.type == RowType.WATERMARK_MASTER) {
-            toggleRow(row);
+        if (opacityOpen) {
+            int barX = left + 2;
+            int barWidth = innerWidth - 4;
+            for (OpacityEntry entry : opacityEntries) {
+                if (mouseY >= y
+                        && mouseY < y + ROW_HEIGHT - 1) {
+                    if (mouseButton == 0) {
+                        int value = clamp(
+                                (mouseX - barX) * 100
+                                        / Math.max(1, barWidth),
+                                0,
+                                100);
+                        entry.setter.accept(Integer.valueOf(value));
+                        draggingOpacity = entry;
+                        config.save();
+                        return;
+                    }
+                    if (mouseButton == 1) {
+                        entry.setter.accept(Integer.valueOf(100));
+                        config.save();
+                        return;
+                    }
+                }
+                y += ROW_HEIGHT - 1;
+            }
+        }
+        y += 2;
+
+        if (mouseY >= y
+                && mouseY < y + ROW_HEIGHT
+                && mouseX >= left
+                && mouseX <= left + innerWidth
+                && mouseButton == 0) {
+            watermarksOpen = !watermarksOpen;
+            return;
+        }
+        y += ROW_HEIGHT;
+
+        if (watermarksOpen) {
+            List<WatermarkSlot> slots = config.watermarkSlots;
+            if (slots == null || slots.isEmpty()) {
+                y += ROW_HEIGHT;
+            } else {
+                for (WatermarkSlot slot : slots) {
+                    if (mouseY >= y
+                            && mouseY < y + ROW_HEIGHT
+                            && mouseButton == 0) {
+                        int editX = left + innerWidth - 22;
+                        if (mouseX >= editX
+                                && mouseX <= editX + 20) {
+                            openWatermarkEditor();
+                            return;
+                        }
+                        if (slot != null) {
+                            slot.enabled = !slot.enabled;
+                            config.save();
+                        }
+                        return;
+                    }
+                    y += ROW_HEIGHT;
+                }
+            }
+            if (mouseY >= y
+                    && mouseY < y + ROW_HEIGHT
+                    && mouseX >= left
+                    && mouseX <= left + innerWidth
+                    && mouseButton == 0) {
+                openWatermarkEditor();
+            }
         }
     }
 
@@ -1024,27 +1706,23 @@ public final class OverlayPositionScreen extends GuiScreen {
         if (clickedMouseButton != 0) {
             return;
         }
-        if (opacityDragging) {
-            setOpacityFromMouse(mouseX);
+        if (draggingOpacity != null) {
+            int panelX = width - PANEL_WIDTH - 4;
+            int barX = panelX + 5;
+            int barWidth = PANEL_WIDTH - 10;
+            int value = clamp(
+                    (mouseX - barX) * 100
+                            / Math.max(1, barWidth),
+                    0,
+                    100);
+            draggingOpacity.setter.accept(Integer.valueOf(value));
             return;
         }
 
         int scaledX = (int) Math.floor(mouseX / (double) overlayScale);
         int scaledY = (int) Math.floor(mouseY / (double) overlayScale);
-        if (resizing && resizeElement != null) {
-            int newWidth = clamp(
-                    scaledX - resizeElement.x,
-                    20,
-                    Math.max(20, virtualWidth - resizeElement.x));
-            int newHeight = clamp(
-                    scaledY - resizeElement.y,
-                    20,
-                    Math.max(20, virtualHeight - resizeElement.y));
-            RecordableConfig config = RecordableConfig.get();
-            config.hudCornersWidth = newWidth;
-            config.hudCornersHeight = newHeight;
-            resizeElement.w = newWidth;
-            resizeElement.h = newHeight;
+        if (activeResize != ResizeEdge.NONE && resizeElement != null) {
+            applyResize(resizeElement, scaledX, scaledY);
             return;
         }
 
@@ -1066,11 +1744,17 @@ public final class OverlayPositionScreen extends GuiScreen {
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int state) {
         super.mouseReleased(mouseX, mouseY, state);
+        draggingOpacity = null;
         if (state == 0) {
-            opacityDragging = false;
-            resizing = false;
-            resizeElement = null;
-            draggedElement = null;
+            if (activeResize != ResizeEdge.NONE) {
+                activeResize = ResizeEdge.NONE;
+                resizeElement = null;
+                RecordableConfig.get().save();
+            }
+            if (draggedElement != null) {
+                draggedElement = null;
+                RecordableConfig.get().save();
+            }
         }
     }
 
@@ -1083,13 +1767,11 @@ public final class OverlayPositionScreen extends GuiScreen {
         }
         int mouseX = Mouse.getEventX() * width
                 / Math.max(1, mc.displayWidth);
-        if (mouseX < panelLeft()) {
+        if (!panelOpen || mouseX < width - PANEL_WIDTH - 10) {
             return;
         }
-        panelScroll += wheel > 0 ? -ROW_HEIGHT : ROW_HEIGHT;
-        clampPanelScroll(
-                panelRows().size(),
-                sliderTop() - 5 - LIST_TOP);
+        panelScroll += wheel > 0 ? -8 : 8;
+        clampOfficialPanelScroll();
     }
 
     @Override
@@ -1184,6 +1866,101 @@ public final class OverlayPositionScreen extends GuiScreen {
             config.hudSynthX = x;
             config.hudSynthY = y;
         }
+    }
+
+    private void applyResize(Element element, int mouseX, int mouseY) {
+        int newX = resizeOriginalX;
+        int newY = resizeOriginalY;
+        int newWidth = resizeOriginalWidth;
+        int newHeight = resizeOriginalHeight;
+
+        if (activeResize == ResizeEdge.TOP_LEFT) {
+            int deltaX = mouseX - resizeOriginalX;
+            int deltaY = mouseY - resizeOriginalY;
+            newX += deltaX;
+            newY += deltaY;
+            newWidth -= deltaX;
+            newHeight -= deltaY;
+        } else if (activeResize == ResizeEdge.TOP_RIGHT) {
+            int deltaY = mouseY - resizeOriginalY;
+            newY += deltaY;
+            newWidth = mouseX - resizeOriginalX;
+            newHeight -= deltaY;
+        } else if (activeResize == ResizeEdge.BOTTOM_LEFT) {
+            int deltaX = mouseX - resizeOriginalX;
+            newX += deltaX;
+            newWidth -= deltaX;
+            newHeight = mouseY - resizeOriginalY;
+        } else if (activeResize == ResizeEdge.BOTTOM_RIGHT) {
+            newWidth = mouseX - resizeOriginalX;
+            newHeight = mouseY - resizeOriginalY;
+        } else {
+            return;
+        }
+
+        int minimumWidth = 20;
+        int minimumHeight = 10;
+        if (newWidth < minimumWidth) {
+            newWidth = minimumWidth;
+            newX = resizeOriginalX + resizeOriginalWidth
+                    - minimumWidth;
+        }
+        if (newHeight < minimumHeight) {
+            newHeight = minimumHeight;
+            newY = resizeOriginalY + resizeOriginalHeight
+                    - minimumHeight;
+        }
+        newX = Math.max(0, newX);
+        newY = Math.max(0, newY);
+        newWidth = Math.max(
+                minimumWidth,
+                Math.min(virtualWidth - newX, newWidth));
+        newHeight = Math.max(
+                minimumHeight,
+                Math.min(virtualHeight - newY, newHeight));
+
+        RecordableConfig config = RecordableConfig.get();
+        if ("Corners".equals(element.id)) {
+            config.hudCornersX = newX;
+            config.hudCornersY = newY;
+            config.hudCornersWidth = newWidth;
+            config.hudCornersHeight = newHeight;
+        } else if ("PLAY/REC".equals(element.id)) {
+            config.hudPlayRecX = newX;
+            config.hudPlayRecY = newY;
+            config.hudPlayRecW = newWidth;
+            config.hudPlayRecH = newHeight;
+        } else if ("Timestamp".equals(element.id)) {
+            config.hudTimestampOffsetX =
+                    virtualWidth - newX - newWidth;
+            config.hudTimestampY = newY;
+            config.hudTimestampW = newWidth;
+            config.hudTimestampH = newHeight;
+        } else if ("SP".equals(element.id)) {
+            config.hudSpX = newX;
+            config.hudSpOffsetY = virtualHeight - newY;
+            config.hudSpW = newWidth;
+            config.hudSpH = newHeight;
+        } else if ("Details".equals(element.id)) {
+            config.hudDetailsOffsetX =
+                    virtualWidth - newX - newWidth;
+            config.hudDetailsOffsetY =
+                    virtualHeight - newY - newHeight;
+            config.hudDetailsW = newWidth;
+            config.hudDetailsH = newHeight;
+        } else if ("Perf".equals(element.id)) {
+            config.hudPerfOffsetX =
+                    virtualWidth - newX - newWidth;
+            config.hudPerfOffsetY =
+                    virtualHeight - newY - newHeight;
+            config.hudPerfW = newWidth;
+            config.hudPerfH = newHeight;
+        }
+
+        element.x = newX;
+        element.y = newY;
+        element.w = newWidth;
+        element.h = newHeight;
     }
 
     private void setOpacityFromMouse(int mouseX) {
@@ -1433,9 +2210,30 @@ public final class OverlayPositionScreen extends GuiScreen {
     private void resetAll() {
         RecordableConfig config = RecordableConfig.get();
         String[] ids = RecordableConfig.defaultLayerOrder().split(",");
-        for (String id : ids) {
-            resetLayer(id.trim());
-        }
+        config.hudPlayRecX = 80;
+        config.hudPlayRecY = 14;
+        config.hudTimestampOffsetX = 14;
+        config.hudTimestampY = 14;
+        config.hudSpX = 80;
+        config.hudSpOffsetY = 24;
+        config.hudPerfOffsetX = 8;
+        config.hudPerfOffsetY = 80;
+        config.hudDetailsOffsetX = 14;
+        config.hudDetailsOffsetY = 14;
+        config.hudCornersX = 68;
+        config.hudCornersY = 4;
+        config.hudCornersWidth = 100;
+        config.hudCornersHeight = 48;
+        config.hudPlayRecW = 0;
+        config.hudPlayRecH = 0;
+        config.hudTimestampW = 0;
+        config.hudTimestampH = 0;
+        config.hudSpW = 0;
+        config.hudSpH = 0;
+        config.hudPerfW = 0;
+        config.hudPerfH = 0;
+        config.hudDetailsW = 0;
+        config.hudDetailsH = 0;
         config.hudPlayRecOpacity = 100;
         config.hudTimestampOpacity = 100;
         config.hudCornersOpacity = 100;
@@ -1449,9 +2247,9 @@ public final class OverlayPositionScreen extends GuiScreen {
         config.hudSpVisible = true;
         config.hudDetailsVisible = true;
         config.hudPerfVisible = true;
+        config.hudMicX = -1;
+        config.hudMicY = 4;
         config.hudMicVisible = true;
-        config.hudClassicVisible = true;
-        config.hudSynthVisible = true;
         layerOrder.clear();
         for (String id : ids) {
             String cleaned = id.trim();
@@ -1460,13 +2258,7 @@ public final class OverlayPositionScreen extends GuiScreen {
             }
         }
         config.hudLayerOrder = join(layerOrder);
-        if (config.watermarkSlots != null) {
-            for (WatermarkSlot slot : config.watermarkSlots) {
-                if (slot != null) {
-                    resetWatermark(slot);
-                }
-            }
-        }
+        config.save();
     }
 
     private List<PanelRow> panelRows() {
@@ -1611,7 +2403,7 @@ public final class OverlayPositionScreen extends GuiScreen {
     private boolean isElementVisible(Element element) {
         RecordableConfig config = RecordableConfig.get();
         if (element.watermark != null) {
-            return config.watermarksEnabled && element.watermark.enabled;
+            return element.watermark.enabled;
         }
         return config.isElementVisible(element.id);
     }
@@ -1824,30 +2616,8 @@ public final class OverlayPositionScreen extends GuiScreen {
                 right - thickness, bottom - safeLength, right, bottom, color);
     }
 
-    private boolean nearResizeHandle(Element element, int x, int y) {
-        return x >= element.x + element.w - RESIZE_HANDLE - 2
-                && x <= element.x + element.w + RESIZE_HANDLE
-                && y >= element.y + element.h - RESIZE_HANDLE - 2
-                && y <= element.y + element.h + RESIZE_HANDLE;
-    }
-
-    private int panelWidth() {
-        return Math.min(PANEL_WIDTH, Math.max(142, width / 2));
-    }
-
     private int panelLeft() {
-        return width - panelWidth();
-    }
-
-    private int sliderTop() {
-        return Math.max(LIST_TOP + ROW_HEIGHT, height - 69);
-    }
-
-    private void clampPanelScroll(int rowCount, int visibleHeight) {
-        int maximum = Math.max(
-                0,
-                rowCount * ROW_HEIGHT - Math.max(1, visibleHeight));
-        panelScroll = clamp(panelScroll, 0, maximum);
+        return width - PANEL_WIDTH - 4;
     }
 
     private int toVirtual(int screenCoordinate) {
@@ -1880,6 +2650,10 @@ public final class OverlayPositionScreen extends GuiScreen {
         return builder.toString();
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
     private static int clamp(int value, int minimum, int maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }
@@ -1908,14 +2682,44 @@ public final class OverlayPositionScreen extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
-        opacityDragging = false;
+        draggingOpacity = null;
         draggedElement = null;
         resizeElement = null;
-        resizing = false;
+        activeResize = ResizeEdge.NONE;
+        if (openingWatermarkEditor) {
+            openingWatermarkEditor = false;
+            return;
+        }
         if (!resolved && original != null) {
             original.restore(RecordableConfig.get());
             RecordableConfig.get().save();
             resolved = true;
+        }
+    }
+
+    private enum ResizeEdge {
+        NONE,
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT
+    }
+
+    private static final class OpacityEntry {
+        private final String id;
+        private final String label;
+        private final Supplier<Integer> getter;
+        private final Consumer<Integer> setter;
+
+        private OpacityEntry(
+                String id,
+                String label,
+                Supplier<Integer> getter,
+                Consumer<Integer> setter) {
+            this.id = id;
+            this.label = label;
+            this.getter = getter;
+            this.setter = setter;
         }
     }
 

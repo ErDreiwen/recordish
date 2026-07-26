@@ -96,7 +96,13 @@ public final class RecordingManager {
     }
 
     public void initialize() {
-        FfmpegBundleManager.detectFfmpeg();
+        /*
+         * Executable probes can wait on a broken custom path or PATH entry.
+         * The title-screen setup flow performs this check asynchronously;
+         * recording start still performs the authoritative synchronous
+         * preflight immediately before an encoder is created.
+         */
+        FfmpegBundleManager.invalidateCache();
     }
 
     public static boolean isInGameState(Minecraft minecraft) {
@@ -715,13 +721,9 @@ public final class RecordingManager {
             @Override
             public void run() {
                 if (resultFailure == null && result != null) {
-                    pendingToastMessage =
-                            "Saved " + result.getFileName();
-                    pendingToastExpiresAtMillis =
-                            System.currentTimeMillis() + 6000L;
                     RecordableMessages.send(
                             ChatCategory.RECORDING,
-                            "Saved recording: " + result.toAbsolutePath());
+                            "Saved recording: " + result.getFileName());
                 } else {
                     RecordableMessages.error(
                             "Recording finalization failed: "

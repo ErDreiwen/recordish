@@ -2,238 +2,196 @@ package dev.recordable.screen;
 
 import dev.recordable.CensorRegion;
 import dev.recordable.RecordableConfig;
+import dev.recordable.theme.ThemeEngine;
+import dev.recordable.theme.ThemedButton;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.GuiTextField;
 import org.lwjgl.input.Keyboard;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Full-screen normalized censor-region editor. Regions can be selected, moved,
- * stretched, labelled, styled, enabled, and removed over the live game view.
+ * V1-0.09 full-screen live censor editor, adapted to Forge 1.8.9.
  */
 public final class CensorOverlayEditorScreen extends GuiScreen {
+    private static final int WIDGET_HEIGHT = 20;
+    private static final double MIN_SIZE = 0.03D;
+    private static final int HANDLE = 7;
+
     private final GuiScreen parent;
-    private GuiTextField labelField;
     private int selected = -1;
-    private DragMode dragMode = DragMode.NONE;
-    private int dragOffsetX;
-    private int dragOffsetY;
+    private int dragMode;
+    private double pressFx;
+    private double pressFy;
+    private double originalX;
+    private double originalY;
 
     public CensorOverlayEditorScreen(GuiScreen parent) {
         this.parent = parent;
     }
 
-    @Override
-    public void initGui() {
-        Keyboard.enableRepeatEvents(true);
-        buttonList.clear();
-        int x = 5;
-        buttonList.add(new GuiButton(1, x, 5, 55, 20, "Done"));
-        x += 58;
-        buttonList.add(new GuiButton(2, x, 5, 48, 20, "Add"));
-        x += 51;
-        buttonList.add(new GuiButton(3, x, 5, 55, 20, "Delete"));
-        x += 58;
-        buttonList.add(new GuiButton(4, x, 5, 65, 20, "Style"));
-        x += 68;
-        buttonList.add(new GuiButton(5, x, 5, 68, 20, "Gradient"));
-        x += 71;
-        buttonList.add(new GuiButton(6, x, 5, 55, 20, "Label"));
-        x += 58;
-        buttonList.add(new GuiButton(7, x, 5, 60, 20, "Enabled"));
-
-        labelField = new GuiTextField(
-                30,
-                fontRendererObj,
-                85,
-                31,
-                Math.max(80, Math.min(250, width - 90)),
-                18);
-        labelField.setMaxStringLength(64);
-        select(selected);
-        updateButtons();
+    private List<CensorRegion> regions() {
+        return RecordableConfig.get().censorRegions;
     }
 
     @Override
-    public void onGuiClosed() {
-        commitLabel();
-        RecordableConfig.get().save();
-        Keyboard.enableRepeatEvents(false);
+    public void initGui() {
+        ThemeEngine.get().applyPreset(RecordableConfig.get().uiTheme);
+        buttonList.clear();
+        int buttonWidth = 96;
+        int gap = 6;
+        int totalWidth = buttonWidth * 4 + gap * 3;
+        int x = (width - totalWidth) / 2;
+        int y = height - 28;
+
+        buttonList.add(ThemedButton.create(
+                1,
+                x,
+                y,
+                buttonWidth,
+                WIDGET_HEIGHT,
+                "Add Bar",
+                button -> addRegion()));
+        x += buttonWidth + gap;
+        buttonList.add(ThemedButton.create(
+                2,
+                x,
+                y,
+                buttonWidth,
+                WIDGET_HEIGHT,
+                "Remove",
+                button -> removeSelected()));
+        x += buttonWidth + gap;
+        buttonList.add(ThemedButton.create(
+                3,
+                x,
+                y,
+                buttonWidth,
+                WIDGET_HEIGHT,
+                "Clear All",
+                button -> {
+                    regions().clear();
+                    selected = -1;
+                    RecordableConfig.get().save();
+                }));
+        x += buttonWidth + gap;
+        buttonList.add(ThemedButton.create(
+                4,
+                x,
+                y,
+                buttonWidth,
+                WIDGET_HEIGHT,
+                "Done",
+                button -> closeToParent()));
+    }
+
+    private void addRegion() {
+        RecordableConfig config = RecordableConfig.get();
+        CensorRegion region = new CensorRegion(
+                0.40D,
+                0.45D,
+                0.20D,
+                0.08D,
+                parseStyle(config.streamerDefaultCensorStyle),
+                "Censor");
+        regions().add(region);
+        selected = regions().size() - 1;
+        config.save();
+    }
+
+    private void removeSelected() {
+        if (selected >= 0 && selected < regions().size()) {
+            regions().remove(selected);
+            selected = -1;
+            RecordableConfig.get().save();
+        }
     }
 
     @Override
     protected void actionPerformed(GuiButton button) throws IOException {
-        if (button == null || !button.enabled) return;
-        List<CensorRegion> regions = regions();
-        CensorRegion region = selectedRegion();
-        if (button.id == 1) {
-            mc.displayGuiScreen(parent);
-        } else if (button.id == 2) {
-            commitLabel();
-            CensorRegion added = new CensorRegion(
-                    0.35,
-                    0.35,
-                    0.30,
-                    0.12,
-                    defaultStyle(),
-                    "Censor " + (regions.size() + 1));
-            added.showLabel = true;
-            regions.add(added);
-            select(regions.size() - 1);
-            save();
-        } else if (button.id == 3 && region != null) {
-            regions.remove(selected);
-            select(Math.min(selected, regions.size() - 1));
-            save();
-        } else if (button.id == 4 && region != null) {
-            region.style = region.style == CensorRegion.Style.SOLID
-                    ? CensorRegion.Style.GRADIENT
-                    : CensorRegion.Style.SOLID;
-            save();
-        } else if (button.id == 5 && region != null) {
-            CensorRegion.GradientDirection[] values =
-                    CensorRegion.GradientDirection.values();
-            region.gradientDirection = values[
-                    (region.gradientDirection.ordinal() + 1)
-                            % values.length];
-            save();
-        } else if (button.id == 6 && region != null) {
-            region.showLabel = !region.showLabel;
-            save();
-        } else if (button.id == 7 && region != null) {
-            region.enabled = !region.enabled;
-            save();
-        }
-        updateButtons();
-    }
-
-    private CensorRegion.Style defaultStyle() {
-        return "GRADIENT".equals(
-                RecordableConfig.get().streamerDefaultCensorStyle)
-                ? CensorRegion.Style.GRADIENT
-                : CensorRegion.Style.SOLID;
-    }
-
-    @Override
-    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-        Gui.drawRect(0, 0, width, 55, 0xD0101010);
-        drawCenteredString(
-                fontRendererObj,
-                "Censor Overlay Editor",
-                width / 2,
-                31,
-                0xFFFFFF);
-        fontRendererObj.drawString(
-                "Label:",
-                48,
-                36,
-                0xBBBBBB);
-        labelField.drawTextBox();
-
-        List<CensorRegion> regions = regions();
-        for (int index = 0; index < regions.size(); index++) {
-            CensorRegion region = regions.get(index);
-            if (region == null) continue;
-            int left = toX(region.x);
-            int top = toY(region.y);
-            int right = toX(region.x + region.width);
-            int bottom = toY(region.y + region.height);
-            int alpha = region.enabled ? 0xC0000000 : 0x60000000;
-            drawRegion(region, left, top, right, bottom, alpha);
-            int border = index == selected ? 0xFFFFFF00 : 0xFFEEEEEE;
-            drawBorder(left, top, right, bottom, border);
-            String text = region.showLabel
-                    ? region.label
-                    : "Region " + (index + 1);
-            fontRendererObj.drawStringWithShadow(
-                    fontRendererObj.trimStringToWidth(
-                            text == null ? "Censor" : text,
-                            Math.max(10, right - left - 6)),
-                    left + 3,
-                    top + 3,
-                    0xFFFFFF);
-            if (index == selected) {
-                Gui.drawRect(
-                        right - 8,
-                        bottom - 8,
-                        right,
-                        bottom,
-                        0xFFFFFF00);
-            }
-        }
-
-        fontRendererObj.drawStringWithShadow(
-                "Click a region to select; drag to move; drag yellow corner to resize.",
-                8,
-                height - 20,
-                0xFFFFFF);
-        super.drawScreen(mouseX, mouseY, partialTicks);
-    }
-
-    private void drawRegion(
-            CensorRegion region,
-            int left,
-            int top,
-            int right,
-            int bottom,
-            int alpha) {
-        int first = alpha | (region.color & 0xFFFFFF);
-        int second = alpha | (region.colorEnd & 0xFFFFFF);
-        if (region.style == CensorRegion.Style.GRADIENT) {
-            if (region.gradientDirection
-                    == CensorRegion.GradientDirection.VERTICAL) {
-                drawGradientRect(left, top, right, bottom, first, second);
-            } else {
-                int strips = Math.max(1, Math.min(64, right - left));
-                for (int strip = 0; strip < strips; strip++) {
-                    float fraction = strips <= 1
-                            ? 0.0F
-                            : strip / (float) (strips - 1);
-                    int color = blend(first, second, fraction);
-                    int x0 = left + (right - left) * strip / strips;
-                    int x1 = left + (right - left) * (strip + 1) / strips;
-                    Gui.drawRect(x0, top, x1, bottom, color);
-                }
-            }
-        } else {
-            Gui.drawRect(left, top, right, bottom, first);
-        }
+        // The themed controls dispatch through their own callbacks.
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton)
             throws IOException {
+        boolean controlHit = mouseButton == 0
+                && isControlAt(mouseX, mouseY);
         super.mouseClicked(mouseX, mouseY, mouseButton);
-        labelField.mouseClicked(mouseX, mouseY, mouseButton);
-        if (mouseButton != 0 || mouseY < 55) return;
+        if (!controlHit) {
+            canvasPress(mouseX, mouseY, mouseButton);
+        }
+    }
 
-        commitLabel();
-        List<CensorRegion> regions = regions();
-        for (int index = regions.size() - 1; index >= 0; index--) {
-            CensorRegion region = regions.get(index);
-            int left = toX(region.x);
-            int top = toY(region.y);
-            int right = toX(region.x + region.width);
-            int bottom = toY(region.y + region.height);
-            if (mouseX < left || mouseX > right
-                    || mouseY < top || mouseY > bottom) {
-                continue;
+    private boolean isControlAt(int mouseX, int mouseY) {
+        for (GuiButton button : buttonList) {
+            if (button.visible
+                    && button.enabled
+                    && mouseX >= button.xPosition
+                    && mouseX < button.xPosition + button.width
+                    && mouseY >= button.yPosition
+                    && mouseY < button.yPosition + button.height) {
+                return true;
             }
-            select(index);
-            if (mouseX >= right - 10 && mouseY >= bottom - 10) {
-                dragMode = DragMode.RESIZE;
-            } else {
-                dragMode = DragMode.MOVE;
-                dragOffsetX = mouseX - left;
-                dragOffsetY = mouseY - top;
-            }
+        }
+        return false;
+    }
+
+    private void canvasPress(int mouseX, int mouseY, int mouseButton) {
+        if (mouseButton != 0 || width <= 0 || height <= 0) {
             return;
         }
-        select(-1);
+        double fx = mouseX / (double) width;
+        double fy = mouseY / (double) height;
+        List<CensorRegion> list = regions();
+
+        if (selected >= 0 && selected < list.size()) {
+            CensorRegion region = list.get(selected);
+            int handleX = (int) ((region.x + region.width) * width);
+            int handleY = (int) ((region.y + region.height) * height);
+            if (Math.abs(mouseX - handleX) <= HANDLE
+                    && Math.abs(mouseY - handleY) <= HANDLE) {
+                dragMode = 2;
+                pressFx = fx;
+                pressFy = fy;
+                originalX = region.x;
+                originalY = region.y;
+                return;
+            }
+        }
+
+        for (int index = list.size() - 1; index >= 0; index--) {
+            CensorRegion region = list.get(index);
+            if (fx >= region.x
+                    && fx <= region.x + region.width
+                    && fy >= region.y
+                    && fy <= region.y + region.height) {
+                selected = index;
+                dragMode = 1;
+                pressFx = fx;
+                pressFy = fy;
+                originalX = region.x;
+                originalY = region.y;
+                return;
+            }
+        }
+
+        RecordableConfig config = RecordableConfig.get();
+        CensorRegion created = new CensorRegion(
+                clamp(fx, 0.0D, 1.0D - MIN_SIZE),
+                clamp(fy, 0.0D, 1.0D - MIN_SIZE),
+                MIN_SIZE,
+                MIN_SIZE,
+                parseStyle(config.streamerDefaultCensorStyle),
+                "Censor");
+        list.add(created);
+        selected = list.size() - 1;
+        dragMode = 3;
+        pressFx = created.x;
+        pressFy = created.y;
     }
 
     @Override
@@ -242,143 +200,187 @@ public final class CensorOverlayEditorScreen extends GuiScreen {
             int mouseY,
             int clickedMouseButton,
             long timeSinceLastClick) {
-        CensorRegion region = selectedRegion();
-        if (region == null || clickedMouseButton != 0) return;
-        if (dragMode == DragMode.MOVE) {
-            double newX = (mouseX - dragOffsetX) / (double) width;
-            double newY = (mouseY - dragOffsetY) / (double) height;
-            region.x = clamp(newX, 0.0D, 1.0D - region.width);
-            region.y = clamp(newY, 0.0D, 1.0D - region.height);
-        } else if (dragMode == DragMode.RESIZE) {
+        if (dragMode == 0 || clickedMouseButton != 0) {
+            return;
+        }
+        canvasDrag(mouseX, mouseY);
+    }
+
+    private void canvasDrag(int mouseX, int mouseY) {
+        if (selected < 0 || selected >= regions().size()) {
+            return;
+        }
+        CensorRegion region = regions().get(selected);
+        double fx = clamp(mouseX / (double) width, 0.0D, 1.0D);
+        double fy = clamp(mouseY / (double) height, 0.0D, 1.0D);
+        if (dragMode == 1) {
+            double deltaX = fx - pressFx;
+            double deltaY = fy - pressFy;
+            region.x = clamp(
+                    originalX + deltaX,
+                    0.0D,
+                    1.0D - region.width);
+            region.y = clamp(
+                    originalY + deltaY,
+                    0.0D,
+                    1.0D - region.height);
+        } else if (dragMode == 2) {
             region.width = clamp(
-                    mouseX / (double) width - region.x,
-                    0.02D,
+                    fx - region.x,
+                    MIN_SIZE,
                     1.0D - region.x);
             region.height = clamp(
-                    mouseY / (double) height - region.y,
-                    0.02D,
+                    fy - region.y,
+                    MIN_SIZE,
                     1.0D - region.y);
+        } else if (dragMode == 3) {
+            double x0 = Math.min(pressFx, fx);
+            double y0 = Math.min(pressFy, fy);
+            double x1 = Math.max(pressFx, fx);
+            double y1 = Math.max(pressFy, fy);
+            region.x = x0;
+            region.y = y0;
+            region.width = Math.max(MIN_SIZE, x1 - x0);
+            region.height = Math.max(MIN_SIZE, y1 - y0);
         }
     }
 
     @Override
-    protected void mouseReleased(
-            int mouseX,
-            int mouseY,
-            int state) {
+    protected void mouseReleased(int mouseX, int mouseY, int state) {
         super.mouseReleased(mouseX, mouseY, state);
-        if (dragMode != DragMode.NONE) save();
-        dragMode = DragMode.NONE;
+        if (dragMode != 0) {
+            canvasRelease();
+        }
+    }
+
+    private void canvasRelease() {
+        if (selected >= 0 && selected < regions().size()) {
+            regions().get(selected).sanitize();
+        }
+        dragMode = 0;
+        RecordableConfig.get().save();
     }
 
     @Override
     protected void keyTyped(char typedChar, int keyCode)
             throws IOException {
+        if (keyCode == Keyboard.KEY_DELETE
+                || keyCode == Keyboard.KEY_BACK) {
+            removeSelected();
+            return;
+        }
         if (keyCode == Keyboard.KEY_ESCAPE) {
-            commitLabel();
-            mc.displayGuiScreen(parent);
-            return;
-        }
-        if (labelField.textboxKeyTyped(typedChar, keyCode)) {
-            if (keyCode == Keyboard.KEY_RETURN) {
-                commitLabel();
-                labelField.setFocused(false);
-            }
-            return;
-        }
-        if (keyCode == Keyboard.KEY_DELETE && selectedRegion() != null) {
-            regions().remove(selected);
-            select(Math.min(selected, regions().size() - 1));
-            save();
+            closeToParent();
             return;
         }
         super.keyTyped(typedChar, keyCode);
     }
 
-    private void select(int index) {
-        commitLabel();
-        selected = index >= 0 && index < regions().size() ? index : -1;
-        CensorRegion region = selectedRegion();
-        if (labelField != null) {
-            labelField.setText(
-                    region == null || region.label == null
-                            ? ""
-                            : region.label);
-        }
-        updateButtons();
-    }
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        RecordableConfig config = RecordableConfig.get();
+        if (config != null) {
+            List<CensorRegion> list = regions();
+            for (int index = 0; index < list.size(); index++) {
+                CensorRegion region = list.get(index);
+                int x0 = (int) (region.x * width);
+                int y0 = (int) (region.y * height);
+                int x1 = (int) ((region.x + region.width) * width);
+                int y1 = (int) ((region.y + region.height) * height);
 
-    private void commitLabel() {
-        CensorRegion region = selectedRegion();
-        if (region == null || labelField == null) return;
-        String value = labelField.getText().trim();
-        region.label = value.isEmpty() ? "Censor" : value;
-        region.sanitize();
-    }
+                Gui.drawRect(
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        0xCC000000 | region.color & 0xFFFFFF);
+                int borderColor = index == selected
+                        ? 0xFF44FF44
+                        : 0xFFFFFFFF;
+                drawBorder(x0, y0, x1, y1, borderColor);
 
-    private void updateButtons() {
-        boolean hasSelection = selectedRegion() != null;
-        for (GuiButton button : buttonList) {
-            if (button.id >= 3 && button.id <= 7) {
-                button.enabled = hasSelection;
+                String tag = region.showLabel
+                        && region.label != null
+                        && !region.label.trim().isEmpty()
+                        ? region.label
+                        : safeStyle(region).name();
+                fontRendererObj.drawStringWithShadow(
+                        "\u25CF " + tag,
+                        x0 + 3,
+                        y0 + 3,
+                        0xFFFFFFFF);
+
+                if (index == selected) {
+                    Gui.drawRect(
+                            x1 - HANDLE,
+                            y1 - HANDLE,
+                            x1,
+                            y1,
+                            0xFFFF8844);
+                }
+            }
+
+            String info = "Drag to move  -  drag the orange corner to "
+                    + "stretch  -  click empty space to add  -  "
+                    + "Delete removes selected";
+            drawCenteredString(
+                    fontRendererObj,
+                    info,
+                    width / 2,
+                    8,
+                    0xFFFFFFFF);
+            drawCenteredString(
+                    fontRendererObj,
+                    list.isEmpty()
+                            ? "No censor bars yet"
+                            : "Bars: " + list.size(),
+                    width / 2,
+                    20,
+                    0xFFB0B0B0);
+            if (!config.streamerModeEnabled) {
+                drawCenteredString(
+                        fontRendererObj,
+                        "Streamer Mode is OFF - bars are saved but not "
+                                + "shown in-game",
+                        width / 2,
+                        32,
+                        0xFFFFAA55);
             }
         }
-        CensorRegion region = selectedRegion();
-        if (region == null) return;
-        button(4).displayString = region.style == CensorRegion.Style.GRADIENT
-                ? "Gradient"
-                : "Solid";
-        button(5).displayString = shortDirection(region.gradientDirection);
-        button(6).displayString = region.showLabel
-                ? "Label: ON"
-                : "Label: OFF";
-        button(7).displayString = region.enabled
-                ? "Enabled"
-                : "Disabled";
+        super.drawScreen(mouseX, mouseY, partialTicks);
     }
 
-    private GuiButton button(int id) {
-        for (GuiButton button : buttonList) {
-            if (button.id == id) return button;
-        }
-        return new GuiButton(-1, 0, 0, "");
-    }
-
-    private static String shortDirection(
-            CensorRegion.GradientDirection direction) {
-        if (direction == CensorRegion.GradientDirection.VERTICAL) {
-            return "Vertical";
-        }
-        if (direction == CensorRegion.GradientDirection.DIAGONAL) {
-            return "Diagonal";
-        }
-        return "Horizontal";
-    }
-
-    private List<CensorRegion> regions() {
-        return RecordableConfig.get().censorRegions;
-    }
-
-    private CensorRegion selectedRegion() {
-        List<CensorRegion> list = regions();
-        return selected >= 0 && selected < list.size()
-                ? list.get(selected)
-                : null;
-    }
-
-    private void save() {
-        CensorRegion region = selectedRegion();
-        if (region != null) region.sanitize();
+    @Override
+    public void onGuiClosed() {
         RecordableConfig.get().save();
-        updateButtons();
+        super.onGuiClosed();
     }
 
-    private int toX(double normalized) {
-        return (int) Math.round(clamp(normalized, 0.0D, 1.0D) * width);
+    @Override
+    public boolean doesGuiPauseGame() {
+        return false;
     }
 
-    private int toY(double normalized) {
-        return (int) Math.round(clamp(normalized, 0.0D, 1.0D) * height);
+    private void closeToParent() {
+        mc.displayGuiScreen(parent);
+    }
+
+    private static CensorRegion.Style safeStyle(CensorRegion region) {
+        return region.style == null
+                ? CensorRegion.Style.SOLID
+                : region.style;
+    }
+
+    private static CensorRegion.Style parseStyle(String value) {
+        if (value != null) {
+            try {
+                return CensorRegion.Style.valueOf(
+                        value.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                // Fall through to the official default.
+            }
+        }
+        return CensorRegion.Style.SOLID;
     }
 
     private static void drawBorder(
@@ -393,29 +395,10 @@ public final class CensorOverlayEditorScreen extends GuiScreen {
         Gui.drawRect(right - 1, top, right, bottom, color);
     }
 
-    private static int blend(int first, int second, float amount) {
-        float value = Math.max(0.0F, Math.min(1.0F, amount));
-        int a = (int) (((first >>> 24) & 255) * (1.0F - value)
-                + ((second >>> 24) & 255) * value);
-        int r = (int) (((first >>> 16) & 255) * (1.0F - value)
-                + ((second >>> 16) & 255) * value);
-        int g = (int) (((first >>> 8) & 255) * (1.0F - value)
-                + ((second >>> 8) & 255) * value);
-        int b = (int) ((first & 255) * (1.0F - value)
-                + (second & 255) * value);
-        return a << 24 | r << 16 | g << 8 | b;
-    }
-
     private static double clamp(
             double value,
             double minimum,
             double maximum) {
         return Math.max(minimum, Math.min(maximum, value));
-    }
-
-    private enum DragMode {
-        NONE,
-        MOVE,
-        RESIZE
     }
 }
