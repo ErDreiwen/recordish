@@ -75,16 +75,20 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /Tell us what broke\. Properly\./);
   assert.match(html, /record-ish/);
   assert.match(html, /Original Record-able/);
+  assert.match(html, /Quick report/);
+  assert.match(html, /Full nerd report/);
+  assert.match(html, /No logs, no jargon\. About a minute\./);
   assert.match(html, /UI \/ usability/);
   assert.match(html, /Recording \/ output/);
   assert.match(html, /FFmpeg \/ install/);
   assert.match(html, /Launcher compatibility/);
   assert.match(html, /Feature request/);
   assert.match(html, /How often/);
-  assert.match(html, /Other mods, shaders, or resource packs/);
-  assert.match(html, /Steps to reproduce/);
+  assert.match(html, /What went wrong\?/);
+  assert.match(html, /What were you doing just before\?/);
   assert.match(html, /Generated Markdown report/);
-  assert.match(html, /Copy report/);
+  assert.match(html, /Open report on GitHub/);
+  assert.match(html, /Copy instead/);
   assert.match(html, /Save \.md/);
   assert.match(
     html,
@@ -94,6 +98,28 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /removed private information/);
   assert.match(html, /Tick the privacy box first/);
   assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
+});
+
+test("keeps the technical report and sends original-mod complaints upstream", async () => {
+  const [builder, css] = await Promise.all([
+    readFile(
+      new URL("../app/report/report-builder.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(builder, /reportMode === "technical"/);
+  assert.match(builder, /Steps to reproduce/);
+  assert.match(builder, /Other mods, shaders, or resource packs/);
+  assert.match(builder, /Relevant log excerpt/);
+  assert.match(builder, /Original mod\? Fuck off upstream, mate\./);
+  assert.match(builder, /absolutely not my problem/);
+  assert.match(builder, /https:\/\/discord\.gg\/Qv32Natvb2/);
+  assert.match(builder, /https:\/\/modrinth\.com\/mod\/record-able/);
+  assert.match(builder, /report-builder-upstream/);
+  assert.match(css, /\.report-builder-upstream/);
+  assert.match(css, /\.upstream-shove/);
 });
 
 test("server-renders FAQs for the original mod and record-ish port", async () => {

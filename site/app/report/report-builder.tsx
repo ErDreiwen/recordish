@@ -13,6 +13,7 @@ type Category =
   | "other";
 
 type Project = "community" | "original";
+type ReportMode = "quick" | "technical";
 
 type ReportState = {
   project: Project;
@@ -113,10 +114,39 @@ function projectLabel(project: Project) {
     : "Original Record-able — Fabric";
 }
 
-function markdownFor(report: ReportState) {
+function markdownFor(report: ReportState, mode: ReportMode) {
   const category =
     CATEGORIES.find((item) => item.value === report.category)?.label ??
     "Other";
+
+  if (mode === "quick") {
+    return `# ${reportTitle(report)}
+
+> **Project:** ${projectLabel(report.project)}
+> **Area:** ${category}
+> **Report type:** Quick report
+
+## What went wrong
+
+${clean(report.actual)}
+
+## What I was doing
+
+${clean(report.steps)}
+
+## The basics
+
+| Item | Value |
+| --- | --- |
+| Launcher | ${clean(report.launcher, "Unknown")} |
+| Frequency | ${clean(report.frequency, "Unknown")} |
+
+## Privacy check
+
+${report.privacyChecked ? "- [x]" : "- [ ]"} I reviewed this report and removed private information.
+`;
+  }
+
   const modifiers = [
     report.optifine ? "OptiFine installed" : "No OptiFine reported",
     report.shaders ? "Shaders enabled" : "Shaders disabled",
@@ -126,6 +156,7 @@ function markdownFor(report: ReportState) {
 
 > **Project:** ${projectLabel(report.project)}
 > **Area:** ${category}
+> **Report type:** Full nerd report
 
 ## Summary
 
@@ -181,23 +212,46 @@ function slugFor(value: string) {
 
 export function ReportBuilder() {
   const [report, setReport] = useState<ReportState>(initialReport);
+  const [reportMode, setReportMode] = useState<ReportMode>("quick");
   const [actionStatus, setActionStatus] = useState(
     "Your draft stays in this tab. Nothing has been sent.",
   );
 
-  const markdown = useMemo(() => markdownFor(report), [report]);
-  const completenessItems = [
-    Boolean(report.project),
-    Boolean(report.category),
-    report.summary.trim().length >= 8,
-    report.steps.trim().length >= 10,
-    report.expected.trim().length >= 5,
-    report.actual.trim().length >= 5,
-    Boolean(report.launcher),
-    Boolean(report.operatingSystem),
-    Boolean(report.frequency),
-    report.privacyChecked,
-  ];
+  const markdown = useMemo(
+    () => markdownFor(report, reportMode),
+    [report, reportMode],
+  );
+  const issueUrl = useMemo(() => {
+    const parameters = new URLSearchParams({
+      title: reportTitle(report),
+      body: markdown,
+    });
+    return `https://github.com/ErDreiwen/record-able/issues/new?${parameters.toString()}`;
+  }, [markdown, report]);
+  const completenessItems =
+    reportMode === "quick"
+      ? [
+          Boolean(report.project),
+          Boolean(report.category),
+          report.summary.trim().length >= 8,
+          report.steps.trim().length >= 10,
+          report.actual.trim().length >= 5,
+          Boolean(report.launcher),
+          Boolean(report.frequency),
+          report.privacyChecked,
+        ]
+      : [
+          Boolean(report.project),
+          Boolean(report.category),
+          report.summary.trim().length >= 8,
+          report.steps.trim().length >= 10,
+          report.expected.trim().length >= 5,
+          report.actual.trim().length >= 5,
+          Boolean(report.launcher),
+          Boolean(report.operatingSystem),
+          Boolean(report.frequency),
+          report.privacyChecked,
+        ];
   const completed = completenessItems.filter(Boolean).length;
   const completeness = Math.round((completed / completenessItems.length) * 100);
   const selectedCategory = CATEGORIES.find(
@@ -275,32 +329,55 @@ export function ReportBuilder() {
     setActionStatus("Saved as Markdown.");
   }
 
+  function openIssue() {
+    if (!report.privacyChecked) {
+      setActionStatus(
+        "Tick the privacy box first. We are not helping you leak your own secrets.",
+      );
+      return;
+    }
+
+    window.open(issueUrl, "_blank", "noopener,noreferrer");
+    setActionStatus(
+      "GitHub opened with the report filled in. You still need to submit it there.",
+    );
+  }
+
   function resetReport() {
     setReport(initialReport);
+    setReportMode("quick");
     setActionStatus("Draft binned. Nothing was submitted.");
   }
 
   return (
-    <div className="report-builder">
+    <div
+      className={
+        report.project === "original"
+          ? "report-builder report-builder-upstream"
+          : "report-builder"
+      }
+    >
       <section className="report-form" aria-labelledby="report-form-title">
         <div className="report-section-heading">
           <div>
             <p className="section-number">01 / DESCRIBE</p>
             <h2 id="report-form-title">What needs sorting?</h2>
           </div>
-          <div className="completeness">
-            <label htmlFor="report-completeness">
-              Ready to share <strong>{completeness}%</strong>
-            </label>
-            <progress
-              id="report-completeness"
-              max="100"
-              value={completeness}
-            >
-              {completeness}%
-            </progress>
-            <span>{completed} of {completenessItems.length} essentials</span>
-          </div>
+          {report.project === "community" ? (
+            <div className="completeness">
+              <label htmlFor="report-completeness">
+                Ready to share <strong>{completeness}%</strong>
+              </label>
+              <progress
+                id="report-completeness"
+                max="100"
+                value={completeness}
+              >
+                {completeness}%
+              </progress>
+              <span>{completed} of {completenessItems.length} essentials</span>
+            </div>
+          ) : null}
         </div>
 
         <fieldset className="category-fieldset">
@@ -349,6 +426,92 @@ export function ReportBuilder() {
           </div>
         </fieldset>
 
+        {report.project === "original" ? (
+          <section
+            aria-labelledby="upstream-shove-title"
+            className="upstream-shove"
+          >
+            <p className="eyebrow">ORIGINAL FABRIC MOD SELECTED</p>
+            <h2 id="upstream-shove-title">
+              Original mod? Fuck off upstream, mate.
+            </h2>
+            <p>
+              That one is not mine to fix. I did not build it, I do not
+              maintain it, and a report here would go straight in the
+              imaginary bin. Give the actual Record-able team the grief using
+              their official links.
+            </p>
+            <p className="upstream-fine-print">
+              No disrespect to the original lot. It is simply their mod, their
+              support desk, and absolutely not my problem.
+            </p>
+            <div className="upstream-links">
+              <a
+                className="button button-primary"
+                href="https://discord.gg/Qv32Natvb2"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Official Discord ↗
+              </a>
+              <a
+                className="button"
+                href="https://modrinth.com/mod/record-able"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Official Modrinth ↗
+              </a>
+            </div>
+          </section>
+        ) : (
+          <>
+            <fieldset className="category-fieldset report-mode-fieldset">
+              <legend>How much effort are we dealing with?</legend>
+              <div className="report-mode-choice">
+                <label
+                  className={
+                    reportMode === "quick"
+                      ? "mode-card mode-card-selected"
+                      : "mode-card"
+                  }
+                >
+                  <input
+                    checked={reportMode === "quick"}
+                    name="report-mode"
+                    onChange={() => setReportMode("quick")}
+                    type="radio"
+                    value="quick"
+                  />
+                  <span>
+                    <strong>Quick report</strong>
+                    <small>No logs, no jargon. About a minute.</small>
+                  </span>
+                  <b>RECOMMENDED</b>
+                </label>
+                <label
+                  className={
+                    reportMode === "technical"
+                      ? "mode-card mode-card-selected"
+                      : "mode-card"
+                  }
+                >
+                  <input
+                    checked={reportMode === "technical"}
+                    name="report-mode"
+                    onChange={() => setReportMode("technical")}
+                    type="radio"
+                    value="technical"
+                  />
+                  <span>
+                    <strong>Full nerd report</strong>
+                    <small>I know what logs and versions are.</small>
+                  </span>
+                  <b>DETAILED</b>
+                </label>
+              </div>
+            </fieldset>
+
         <fieldset className="category-fieldset report-category-fieldset">
           <legend>What has gone wrong? Do not overthink it.</legend>
           <div className="category-grid">
@@ -381,7 +544,7 @@ export function ReportBuilder() {
         <div className="report-fields">
           <label className="field field-wide">
             <span>
-              Short summary <b aria-hidden="true">*</b>
+              Give it a short name <b aria-hidden="true">*</b>
               <small>{report.summary.length}/100</small>
             </span>
             <input
@@ -393,48 +556,128 @@ export function ReportBuilder() {
             />
           </label>
 
-          <label className="field field-wide">
-            <span>
-              Steps to reproduce <b aria-hidden="true">*</b>
-              <small>One action per line works best</small>
-            </span>
-            <textarea
-              onChange={(event) => setField("steps", event.target.value)}
-              placeholder={"1. Open settings\n2. Choose Download FFmpeg\n3. ..."}
-              required
-              rows={5}
-              value={report.steps}
-            />
-          </label>
+          {reportMode === "quick" ? (
+            <>
+              <label className="field field-wide">
+                <span>
+                  What went wrong? <b aria-hidden="true">*</b>
+                  <small>Plain English is perfect</small>
+                </span>
+                <textarea
+                  maxLength={1200}
+                  onChange={(event) => setField("actual", event.target.value)}
+                  placeholder="Example: I closed Minecraft and the video would not play."
+                  required
+                  rows={5}
+                  value={report.actual}
+                />
+              </label>
 
-          <label className="field">
-            <span>
-              Expected <b aria-hidden="true">*</b>
-            </span>
-            <textarea
-              onChange={(event) => setField("expected", event.target.value)}
-              placeholder="What should have happened?"
-              required
-              rows={4}
-              value={report.expected}
-            />
-          </label>
+              <label className="field field-wide">
+                <span>
+                  What were you doing just before?{" "}
+                  <b aria-hidden="true">*</b>
+                  <small>No detective novel needed</small>
+                </span>
+                <textarea
+                  maxLength={1200}
+                  onChange={(event) => setField("steps", event.target.value)}
+                  placeholder="Example: I pressed record, played one match, then closed the game."
+                  required
+                  rows={4}
+                  value={report.steps}
+                />
+              </label>
 
-          <label className="field">
-            <span>
-              Actually happened <b aria-hidden="true">*</b>
-            </span>
-            <textarea
-              onChange={(event) => setField("actual", event.target.value)}
-              placeholder="What did it do instead? Include the exact error if there is one."
-              required
-              rows={4}
-              value={report.actual}
-            />
-          </label>
+              <label className="field">
+                <span>
+                  Launcher / profile <b aria-hidden="true">*</b>
+                </span>
+                <select
+                  onChange={(event) => setField("launcher", event.target.value)}
+                  required
+                  value={report.launcher}
+                >
+                  <option value="">Choose one…</option>
+                  <option>Prism Launcher</option>
+                  <option>Lunar — Vanilla/Forge</option>
+                  <option>Lunar — branded/Ichor</option>
+                  <option>Minecraft Launcher</option>
+                  <option>MultiMC</option>
+                  <option>Other launcher</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>
+                  How often? <b aria-hidden="true">*</b>
+                </span>
+                <select
+                  onChange={(event) =>
+                    setField("frequency", event.target.value)
+                  }
+                  required
+                  value={report.frequency}
+                >
+                  <option value="">Choose one…</option>
+                  <option>Every time</option>
+                  <option>Often</option>
+                  <option>Sometimes</option>
+                  <option>Happened once</option>
+                  <option>Not sure</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="field field-wide">
+                <span>
+                  Steps to reproduce <b aria-hidden="true">*</b>
+                  <small>One action per line works best</small>
+                </span>
+                <textarea
+                  onChange={(event) => setField("steps", event.target.value)}
+                  placeholder={
+                    "1. Open settings\n2. Choose Download FFmpeg\n3. ..."
+                  }
+                  required
+                  rows={5}
+                  value={report.steps}
+                />
+              </label>
+
+              <label className="field">
+                <span>
+                  Expected <b aria-hidden="true">*</b>
+                </span>
+                <textarea
+                  onChange={(event) => setField("expected", event.target.value)}
+                  placeholder="What should have happened?"
+                  required
+                  rows={4}
+                  value={report.expected}
+                />
+              </label>
+
+              <label className="field">
+                <span>
+                  Actually happened <b aria-hidden="true">*</b>
+                </span>
+                <textarea
+                  onChange={(event) => setField("actual", event.target.value)}
+                  placeholder="What did it do instead? Include the exact error if there is one."
+                  required
+                  rows={4}
+                  value={report.actual}
+                />
+              </label>
+            </>
+          )}
         </div>
 
-        <details className="environment-panel" open>
+        {reportMode === "technical" ? (
+          <>
+            <details className="environment-panel" open>
           <summary>
             <span>
               <strong>02 / ENVIRONMENT</strong>
@@ -617,14 +860,16 @@ export function ReportBuilder() {
             </label>
           </div>
         </details>
+          </>
+        ) : null}
 
         <div className="privacy-gate">
           <div className="privacy-warning" role="note">
             <strong>Privacy. Yes, it matters.</strong>
             <p>
-              Logs can expose usernames, server addresses, chat, folder names,
-              or access tokens. Strip that out. Never paste a password. We are
-              not that desperate.
+              Reports and logs can expose usernames, server addresses, chat,
+              folder names, or access tokens. Strip that out. Never paste a
+              password. We are not that desperate.
             </p>
           </div>
           <label className="privacy-check">
@@ -638,35 +883,66 @@ export function ReportBuilder() {
             <span>I reviewed this report and removed private information.</span>
           </label>
         </div>
+          </>
+        )}
       </section>
 
-      <aside className="report-output" aria-labelledby="preview-title">
-        <div className="output-heading">
+      {report.project === "community" ? (
+        <aside className="report-output" aria-labelledby="preview-title">
+          <div className="output-heading">
           <div>
-            <p className="section-number">LIVE PREVIEW</p>
+            <p className="section-number">READY TO SEND</p>
             <h2 id="preview-title">Your tidy little report</h2>
           </div>
           <span className="draft-badge">NOT SENT</span>
         </div>
 
         <p className="report-title-preview">{reportTitle(report)}</p>
-        <textarea
-          aria-label="Generated Markdown report"
-          className="markdown-preview"
-          readOnly
-          rows={24}
-          value={markdown}
-        />
+        {reportMode === "quick" ? (
+          <details className="generated-report-panel">
+            <summary>See the generated report</summary>
+            <textarea
+              aria-label="Generated Markdown report"
+              className="markdown-preview"
+              readOnly
+              rows={16}
+              value={markdown}
+            />
+          </details>
+        ) : (
+          <textarea
+            aria-label="Generated Markdown report"
+            className="markdown-preview"
+            readOnly
+            rows={24}
+            value={markdown}
+          />
+        )}
 
         <div className="output-actions">
+          {reportMode === "quick" ? (
+            <button
+              aria-describedby="share-help"
+              className="button button-primary"
+              disabled={!report.privacyChecked}
+              onClick={openIssue}
+              type="button"
+            >
+              Open report on GitHub ↗
+            </button>
+          ) : null}
           <button
             aria-describedby="share-help"
-            className="button button-primary"
+            className={
+              reportMode === "technical"
+                ? "button button-primary"
+                : "button"
+            }
             disabled={!report.privacyChecked}
             onClick={copyReport}
             type="button"
           >
-            Copy report
+            {reportMode === "quick" ? "Copy instead" : "Copy report"}
           </button>
           <button
             aria-describedby="share-help"
@@ -682,29 +958,22 @@ export function ReportBuilder() {
           </button>
         </div>
         <p className="share-help" id="share-help">
-          Tick the privacy box first. We are not helping you leak your own
-          stuff.
+          {reportMode === "quick"
+            ? "Tick the privacy box first. The GitHub button fills the report in, but nothing is submitted until you approve it there."
+            : "Tick the privacy box first, then copy or save the report and open the port issue link below."}
         </p>
         <p className="action-status" aria-live="polite">
           {actionStatus}
         </p>
 
         <div className="handoff-card">
-          <p className="eyebrow">Right, where now?</p>
-          <h3>Take it to Discord for now.</h3>
-          {report.project === "community" ? (
-            <p>
-              Copy or save the report, then open an issue on the record-ish
-              fork or take it to the official Record-able Discord. It will not
-              send itself, and this page uploads nothing.
-            </p>
-          ) : (
-            <p>
-              For the original Fabric mod, use the official Record-able Discord
-              or Modrinth page. The upstream GitHub currently restricts new
-              issue creation. This page uploads nothing.
-            </p>
-          )}
+          <p className="eyebrow">Need a human?</p>
+          <h3>Give us the useful bits.</h3>
+          <p>
+            Port bugs belong on the record-ish issue tracker. If you are
+            properly stuck, the original Record-able Discord may still know
+            the recording side of things.
+          </p>
           <div className="handoff-links">
             <a
               className="button"
@@ -714,26 +983,14 @@ export function ReportBuilder() {
             >
               Open Discord ↗
             </a>
-            {report.project === "community" ? (
-              <a
-                className="button"
-                href="https://github.com/ErDreiwen/record-able/issues/new"
-                rel="noreferrer"
-                target="_blank"
-              >
+            <a
+              className="button"
+              href="https://github.com/ErDreiwen/record-able/issues/new"
+              rel="noreferrer"
+              target="_blank"
+            >
                 Open port issue ↗
-              </a>
-            ) : null}
-            {report.project === "original" ? (
-              <a
-                className="button"
-                href="https://modrinth.com/mod/record-able"
-                rel="noreferrer"
-                target="_blank"
-              >
-                Official Modrinth ↗
-              </a>
-            ) : null}
+            </a>
           </div>
         </div>
 
@@ -741,7 +998,8 @@ export function ReportBuilder() {
           For <strong>{projectLabel(report.project)}</strong> · Filing as{" "}
           <strong>{selectedCategory?.label}</strong>
         </p>
-      </aside>
+        </aside>
+      ) : null}
     </div>
   );
 }

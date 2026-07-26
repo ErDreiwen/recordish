@@ -97,9 +97,9 @@ const originalFaqs: Faq[] = [
     question: "Where should I report an original-mod problem?",
     answer: (
       <p>
-        Use the original Modrinth support links, especially the creator&apos;s
-        Discord. A report built here does not magically teleport to the
-        original maintainer.
+        Pick Original Record-able in the <Link href="/report">Report Center</Link>{" "}
+        and it will point you at the official Discord and Modrinth page. This
+        port does not accept or pretend it can fix upstream reports.
       </p>
     ),
   },
@@ -190,9 +190,10 @@ const communityFaqs: Faq[] = [
     question: "How do I report a port, UI, or website issue?",
     answer: (
       <p>
-        Use the guided <Link href="/report">Report Center</Link>. It prepares a
-        complete Markdown report that you can copy or download, then hand to
-        the port&apos;s GitHub issue tracker or the linked community channel.
+        Use the guided <Link href="/report">Report Center</Link>. Quick report
+        asks normal-human questions and opens a pre-filled GitHub issue. Full
+        nerd report keeps the versions, environment, logs, copy, and download
+        tools when proper evidence is needed.
       </p>
     ),
   },
