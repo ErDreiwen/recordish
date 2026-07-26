@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const SITE_NAME = "Record-able for Forge 1.8.9";
+const SITE_NAME = "Recordable Community — Unofficial Forge 1.8.9 Port";
 const SITE_DESCRIPTION =
-  "Record Minecraft, save replays, and keep automatic clips with the Forge 1.8.9 port of Record-able.";
+  "An unofficial community Forge 1.8.9 port of Record-able, the Minecraft recording mod by Minewind's Jo Eusebe.";
 
 function requestOrigin(
   host: string | null,
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
     requestHeaders.get("x-forwarded-proto"),
   );
-  const socialImage = new URL("/og.png", origin).toString();
+  const socialImage = new URL("/og-community.png", origin).toString();
 
   return {
     metadataBase: origin,
@@ -39,20 +39,23 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s · ${SITE_NAME}`,
     },
     description: SITE_DESCRIPTION,
-    applicationName: "Record-able",
-    authors: [{ name: "Record-able contributors" }],
+    applicationName: "Recordable Community",
+    authors: [
+      { name: "Minewind's Jo Eusebe (original Record-able)" },
+      { name: "ErDreiwen (community port)" },
+    ],
     openGraph: {
       type: "website",
       title: SITE_NAME,
       description: SITE_DESCRIPTION,
-      siteName: "Record-able",
+      siteName: "Recordable Community",
       url: origin,
       images: [
         {
           url: socialImage,
           width: 1731,
           height: 909,
-          alt: "Record-able for Forge 1.8.9",
+          alt: "Recordable Community, an unofficial Forge 1.8.9 port",
         },
       ],
     },

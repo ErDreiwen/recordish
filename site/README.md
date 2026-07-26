@@ -1,7 +1,7 @@
-# Record-able Forge website
+# Recordable Community website
 
-The simple product site and web documentation for the Forge 1.8.9 port of
-Record-able.
+The simple product site, Report Center, FAQ, and web documentation for the
+unofficial Recordable Community Forge 1.8.9 port of Record-able.
 
 ## Local development
 

@@ -9,10 +9,10 @@ const CHECKSUM =
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Record-able for Forge 1.8.9",
+    absolute: "Recordable Community — Unofficial Forge 1.8.9 Port",
   },
   description:
-    "Record Minecraft, save replays, and keep automatic clips with the Forge 1.8.9 port of Record-able.",
+    "An unofficial community Forge 1.8.9 port of Record-able, the Minecraft recording mod by Minewind's Jo Eusebe.",
 };
 
 export default function Home() {
@@ -21,8 +21,16 @@ export default function Home() {
       <main id="main-content">
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
-            <p className="issue-line">RECORD-ABLE / FORGE 1.8.9</p>
-            <h1 id="hero-title">Record Minecraft. Keep the good parts.</h1>
+            <p className="issue-line">
+              UNOFFICIAL / FORGE 1.8.9 COMMUNITY PORT
+            </p>
+            <div className="brand-lockup">
+              <h1 id="hero-title">Recordable</h1>
+              <span className="brand-tag">Community</span>
+            </div>
+            <p className="hero-tagline">
+              Record Minecraft. Keep the good parts.
+            </p>
             <p className="standfirst">
               Video, game audio, instant replays, and automatic clips—captured
               inside Minecraft.
@@ -36,11 +44,13 @@ export default function Home() {
                 Read the docs
               </Link>
             </div>
-            <p className="release-note">Forge port · version 1.0.0</p>
+            <p className="release-note">
+              Unofficial community port · version 1.0.0
+            </p>
           </div>
 
           <aside className="cover-note" aria-label="Release summary">
-            <p className="cover-kicker">The BedWars issue</p>
+            <p className="cover-kicker">The BedWars edition</p>
             <p className="cover-number">1.8.9</p>
             <p>
               A faithful desktop port for the version people still play.
@@ -63,23 +73,23 @@ export default function Home() {
           </span>
         </section>
 
-        <section className="briefs" aria-label="About Record-able">
+        <section className="briefs" aria-label="Original mod and community port">
           <article>
             <p className="section-number">01</p>
-            <h2>The mod</h2>
+            <h2>The original</h2>
             <p>
-              Record-able writes standard video files with Minecraft audio,
-              optional microphone audio, pause and resume, replay saving,
-              overlays, and event-triggered clips.
+              Record-able is the MIT-licensed Minecraft recorder created by
+              Minewind&apos;s Jo Eusebe. Its official releases live on
+              Modrinth and the original source repository.
             </p>
           </article>
           <article>
             <p className="section-number">02</p>
-            <h2>The fork</h2>
+            <h2>The Community port</h2>
             <p>
-              This Forge 1.8.9 edition adapts the current desktop experience to
-              the legacy client, including its recorder, collection, settings,
-              FFmpeg setup, and BedWars-friendly kill clips.
+              Recordable Community independently adapts that experience to
+              Minecraft 1.8.9 on Forge. It is maintained by ErDreiwen and is
+              not an official release or endorsement from the original author.
             </p>
           </article>
         </section>
@@ -87,7 +97,7 @@ export default function Home() {
         <section className="link-desk" aria-labelledby="links-title">
           <div>
             <p className="eyebrow">Files &amp; links</p>
-            <h2 id="links-title">Get the port</h2>
+            <h2 id="links-title">Get Recordable Community</h2>
           </div>
           <nav className="file-links" aria-label="Project files">
             <a href={DOWNLOAD_PATH} download>
@@ -100,12 +110,22 @@ export default function Home() {
               Docs
               <small>Install &amp; use</small>
             </Link>
+            <Link href="/faq">
+              <span>03</span>
+              FAQ
+              <small>Original &amp; port</small>
+            </Link>
+            <Link href="/report">
+              <span>04</span>
+              Report Center
+              <small>Prepare a useful report</small>
+            </Link>
             <a
               href="https://github.com/JoEusebe/record-able"
               rel="noreferrer"
               target="_blank"
             >
-              <span>03</span>
+              <span>05</span>
               Original source
               <small>GitHub ↗</small>
             </a>
@@ -137,7 +157,8 @@ export default function Home() {
 
       <footer className="site-footer">
         <p>
-          Fork by ErDreiwen · Original mod by Minewind&apos;s Jo Eusebe · MIT
+          Recordable Community is an unofficial port · Original Record-able by
+          Minewind&apos;s Jo Eusebe · Port maintained by ErDreiwen · MIT
           licensed
         </p>
         <nav aria-label="Social links">

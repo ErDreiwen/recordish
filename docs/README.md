@@ -1,13 +1,16 @@
-# Record-able Forge 1.8.9 docs
+# Recordable Community Forge 1.8.9 docs
 
-Record-able records Minecraft video, game audio, optional microphone audio,
-instant replays, and automatic clips from inside the game.
+Recordable Community is an unofficial Forge 1.8.9 port of Record-able by
+Minewind's Jo Eusebe. It records Minecraft video, game audio, optional
+microphone audio, instant replays, and automatic clips from inside the game.
 
 ## Start here
 
 - [Install Record-able and FFmpeg](INSTALLATION.md)
 - [Record, pause, save replays, and find videos](USAGE.md)
 - [Fix common problems](TROUBLESHOOTING.md)
+- [Frequently asked questions](FAQ.md)
+- [Report a problem](REPORTING.md)
 
 ## Compatibility
 

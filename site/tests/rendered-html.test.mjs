@@ -30,14 +30,19 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Record-able homepage", async () => {
+test("server-renders the Recordable Community homepage", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Record-able for Forge 1\.8\.9<\/title>/i);
-  assert.match(html, /RECORD-ABLE \/ FORGE 1\.8\.9/);
+  assert.match(
+    html,
+    /<title>Recordable Community .* Unofficial Forge 1\.8\.9 Port<\/title>/i,
+  );
+  assert.match(html, /UNOFFICIAL \/ FORGE 1\.8\.9 COMMUNITY PORT/);
+  assert.match(html, /<h1[^>]*>Recordable<\/h1>/);
+  assert.match(html, />Community<\/span>/);
   assert.match(html, /Record Minecraft\. Keep the good parts\./);
   assert.match(html, /Minecraft[\s\S]*1\.8\.9/);
   assert.match(html, /Forge[\s\S]*11\.15\.1\.2318/);
@@ -47,7 +52,11 @@ test("server-renders the Record-able homepage", async () => {
     /href="\/downloads\/recordable-1\.0\.0-forge-1\.8\.9\.jar"/,
   );
   assert.match(html, /href="\/docs"/);
+  assert.match(html, /href="\/faq"/);
+  assert.match(html, /href="\/report"/);
   assert.match(html, /Original source/);
+  assert.match(html, /Original Record-able by/);
+  assert.match(html, /not an official release or endorsement/);
   assert.match(html, /Vanilla\/Forge/);
   assert.match(html, new RegExp(expectedChecksum));
   assert.match(html, /https:\/\/github\.com\/ErDreiwen/);
@@ -55,9 +64,53 @@ test("server-renders the Record-able homepage", async () => {
   assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
   assert.match(
     html,
-    /property="og:image" content="https?:\/\/[^"]+\/og\.png"/,
+    /property="og:image" content="https?:\/\/[^"]+\/og-community\.png"/,
   );
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
+});
+
+test("server-renders the local report desk", async () => {
+  const response = await render("/report");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Report Center/i);
+  assert.match(html, /RECORDABLE COMMUNITY \/ GUIDED REPORT CENTER/);
+  assert.match(html, /Make a useful report/);
+  assert.match(html, /Recordable Community/);
+  assert.match(html, /Original Record-able/);
+  assert.match(html, /UI \/ usability/);
+  assert.match(html, /Recording \/ output/);
+  assert.match(html, /FFmpeg \/ install/);
+  assert.match(html, /Launcher compatibility/);
+  assert.match(html, /Feature request/);
+  assert.match(html, /How often/);
+  assert.match(html, /Other mods, shaders, or resource packs/);
+  assert.match(html, /Steps to reproduce/);
+  assert.match(html, /Generated Markdown report/);
+  assert.match(html, /Copy report/);
+  assert.match(html, /Download \.md/);
+  assert.match(html, /Nothing is uploaded or submitted/);
+  assert.match(html, /removed private information/);
+  assert.match(html, /check its box to enable copying or downloading/);
+  assert.match(html, /https:\/\/discord\.gg\/Qv32Natvb2/);
+});
+
+test("server-renders FAQs for the original mod and Community port", async () => {
+  const response = await render("/faq");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>FAQ .* Recordable Community/i);
+  assert.match(html, /Frequently asked questions/);
+  assert.match(html, /Original Record-able/);
+  assert.match(html, /Recordable Community/);
+  assert.match(html, /Is this the official Record-able website/);
+  assert.match(html, /unofficial, community-maintained Forge 1\.8\.9 port/i);
+  assert.match(html, /Does it work in Prism and Lunar Launcher/);
+  assert.match(html, /How do I report a port, UI, or website issue/);
+  assert.match(html, /does not submit or upload/i);
+  assert.match(html, /href="\/report"/);
 });
 
 test("server-renders concise installation and usage docs", async () => {
@@ -65,11 +118,8 @@ test("server-renders concise installation and usage docs", async () => {
   assert.equal(response.status, 200);
 
   const html = await response.text();
-  assert.match(
-    html,
-    /<title>Docs · Record-able for Forge 1\.8\.9<\/title>/i,
-  );
-  assert.match(html, /Record-able docs/);
+  assert.match(html, /<title>Docs .* Recordable Community .* Forge 1\.8\.9 Port<\/title>/i);
+  assert.match(html, /Recordable Community docs/);
   assert.match(html, /Forge 11\.15\.1\.2318/);
   assert.match(html, /Default keys/);
   assert.match(html, /recordings\\recording_auto_clips/);

@@ -26,6 +26,8 @@ The original MIT license and author attribution are retained.
 - [Installation and FFmpeg](docs/INSTALLATION.md)
 - [Recording, replay, and BedWars clips](docs/USAGE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Original and Community port FAQ](docs/FAQ.md)
+- [Reporting a problem](docs/REPORTING.md)
 - [Desktop parity and verification](docs/PARITY.md)
 
 ## Install and record

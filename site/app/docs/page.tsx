@@ -5,7 +5,7 @@ import { WindowShell } from "../window-shell";
 export const metadata: Metadata = {
   title: "Docs",
   description:
-    "Install and use Record-able for Forge 1.8.9, configure FFmpeg, and troubleshoot common recording issues.",
+    "Install and use Recordable Community for Forge 1.8.9, configure FFmpeg, and troubleshoot common recording issues.",
 };
 
 const DOWNLOAD_PATH =
@@ -17,8 +17,10 @@ export default function DocsPage() {
       <main id="main-content" className="docs">
         <header className="docs-header">
           <div>
-            <p className="issue-line">FIELD MANUAL / VERSION 1.0.0</p>
-            <h1>Record-able docs</h1>
+            <p className="issue-line">
+              FIELD MANUAL / UNOFFICIAL COMMUNITY PORT 1.0.0
+            </p>
+            <h1>Recordable Community docs</h1>
             <p>
               The short guide to installing, recording, and finding your clips.
             </p>
@@ -51,7 +53,7 @@ export default function DocsPage() {
               <li>Start Minecraft with Java 8.</li>
             </ol>
             <p className="callout">
-              Keep only one Record-able JAR in the profile. A small
+              Keep only one Recordable Community JAR in the profile. A small
               clapperboard on the title screen confirms it loaded.
             </p>
           </section>
@@ -199,13 +201,16 @@ export default function DocsPage() {
             ← Back home
           </Link>
           <a className="button button-primary" href={DOWNLOAD_PATH} download>
-            Download Record-able
+            Download Recordable Community
           </a>
         </div>
       </main>
 
       <footer className="site-footer">
-        <p>Need more detail? Open an issue after the public fork launches.</p>
+        <p>
+          Unofficial Forge 1.8.9 port of Record-able by Minewind&apos;s Jo
+          Eusebe.
+        </p>
         <nav aria-label="Project links">
           <a
             href="https://github.com/JoEusebe/record-able"
