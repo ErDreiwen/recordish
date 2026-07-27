@@ -11,8 +11,7 @@
       "draft": true,
       "force-tag-creation": true,
       "exclude-paths": [
-        "docs/**",
-        "site/**"
+        "docs/**"
       ]
     }
   }

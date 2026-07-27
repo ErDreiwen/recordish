@@ -32,7 +32,6 @@ recordings
 clips
 config/recordish.json
 config/recordable.json
-site/.local-dev.*.log
 
 # local secrets and signing material
 .env

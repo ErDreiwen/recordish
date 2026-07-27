@@ -25,7 +25,7 @@ const NIGHTLY_SEMVER =
 
 function usage() {
   return `Usage:
-  node scripts/package-release.mjs \\
+  node .github/release/package-release.mjs \\
     --jar <path> \\
     --version <semver> \\
     --channel <stable|nightly> \\
