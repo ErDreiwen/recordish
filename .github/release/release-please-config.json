@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bootstrap-sha": "0b05278d90d3568011258a9826484ba3abee5363",
+  "last-release-sha": "2479477da22af6160cb1466e64bf4972c6eb3efb",
   "packages": {
     ".": {
       "release-type": "simple",
@@ -11,12 +12,10 @@
       "draft": true,
       "force-tag-creation": true,
       "exclude-paths": [
-        ".github/**",
-        "docs/**",
-        "legal/**",
-        "README.md",
-        "UPSTREAM.md",
-        "site/**"
+        ".github",
+        "docs",
+        "legal",
+        "site"
       ]
     }
   }

@@ -17,6 +17,12 @@ updates to that file, `CHANGELOG.md`, and
 `.github/release/.release-please-manifest.json`. Minecraft, Forge, and Java
 versions are release metadata rather than part of the semantic version.
 
+The temporary `last-release-sha` in the Release Please configuration marks the
+post-split history baseline. It prevents imported website and CI commits after
+`v1.1.0` from becoming a mod release. Remove that key from the first legitimate
+post-split release PR before merging it; the new release tag then becomes the
+normal baseline.
+
 The stable artifact name is:
 
 ```text
