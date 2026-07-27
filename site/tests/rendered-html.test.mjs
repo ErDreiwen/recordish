@@ -373,6 +373,10 @@ test("publishes canonical metadata, structured identity, and crawler files", asy
   }
 
   const home = await (await render()).text();
+  assert.match(
+    home,
+    /name="google-site-verification" content="p-gLkl6sQ_89A8ucUoz8pGKsRV3o2B5v63EFLIV_KBA"/,
+  );
   assert.match(home, /type="application\/ld\+json"/i);
   assert.match(home, /"@type":"WebSite"/);
   assert.match(home, /"name":"Recordish"/);

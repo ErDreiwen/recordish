@@ -72,6 +72,9 @@ export const metadata: Metadata = {
   creator: "ErDreiwen",
   publisher: "Recordish community project",
   category: "Minecraft mod",
+  verification: {
+    google: "p-gLkl6sQ_89A8ucUoz8pGKsRV3o2B5v63EFLIV_KBA",
+  },
   robots: {
     index: true,
     follow: true,
