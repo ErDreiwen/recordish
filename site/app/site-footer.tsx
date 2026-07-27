@@ -14,6 +14,7 @@ export function SiteFooter() {
       </p>
       <nav aria-label="Project and social links">
         <a href={PORT_REPOSITORY} rel="noreferrer" target="_blank">
+          Recordish on{" "}
           GitHub
         </a>
         <a

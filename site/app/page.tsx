@@ -1,17 +1,17 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { PORT_REPOSITORY } from "./links";
 import { RELEASE } from "./release";
+import {
+  createPageMetadata,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+} from "./site-config";
 import { SiteFooter } from "./site-footer";
 import { WindowShell } from "./window-shell";
 
-export const metadata: Metadata = {
-  title: {
-    absolute: "record-ish — A Record-able Port for Forge 1.8.9",
-  },
-  description:
-    "record-ish is the unofficial Forge 1.8.9 port of Record-able, originally by Minewind's Jo Eusebe. No corporate waffle—just recording, clips, and a proper manual.",
-};
+export const metadata = createPageMetadata({
+  title: SITE_TITLE, description: SITE_DESCRIPTION, path: "/", absoluteTitle: true,
+});
 
 export default function Home() {
   return (
@@ -96,6 +96,7 @@ export default function Home() {
           <article>
             <p className="section-number">02</p>
             <h2>The record-ish port</h2>
+            <p><strong>Recordish</strong> is the name; record-ish is how it looks.</p>
             <p>
               We dragged that desktop experience back to Forge 1.8.9 because
               BedWars players still live here. Maintained by ErDreiwen;

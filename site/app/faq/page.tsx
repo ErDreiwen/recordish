@@ -1,14 +1,15 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { createPageMetadata } from "../site-config";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "FAQ",
   description:
-    "Straight answers about the original Record-able Fabric mod and record-ish, its mouthy unofficial Forge 1.8.9 port.",
-};
+    "Straight answers about the original Record-able Fabric mod and Recordish, its mouthy unofficial Forge 1.8.9 port.",
+  path: "/faq/",
+});
 
 type Faq = {
   question: string;

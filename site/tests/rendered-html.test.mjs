@@ -40,7 +40,7 @@ test("server-renders the unofficial record-ish homepage", async () => {
   const html = await response.text();
   assert.match(
     html,
-    /<title>record-ish .* A Record-able Port for Forge 1\.8\.9<\/title>/i,
+    /<title>Recordish \(record-ish\) .* A Record-able Port for Forge 1\.8\.9<\/title>/i,
   );
   assert.match(html, /UNOFFICIAL \/ COMMUNITY PORT \/ FORGE 1\.8\.9/);
   assert.match(html, /<h1[^>]*aria-label="record-ish"[^>]*>/i);
@@ -227,7 +227,7 @@ test("server-renders concise installation and usage docs", async () => {
   const html = await response.text();
   assert.match(
     html,
-    /<title>Docs .* record-ish .* Record-able Port for Forge 1\.8\.9<\/title>/i,
+    /<title>Docs .* Recordish \(record-ish\) .* Record-able Port for Forge 1\.8\.9<\/title>/i,
   );
   assert.match(html, /Docs\. Read these before kicking off\./);
   assert.match(html, /Forge 11\.15\.1\.2318/);
@@ -353,4 +353,53 @@ test("insets the briefs divider below the three-column requirements bar", async 
     css,
     /@media \(max-width:\s*760px\)[\s\S]*?\.briefs article \+ article::before\s*\{[^}]*display:\s*none;/,
   );
+});
+
+test("publishes canonical metadata, structured identity, and crawler files", async () => {
+  const routeCanonicals = [
+    ["/", "https://recordish.kmsi.me/"],
+    ["/download", "https://recordish.kmsi.me/download/"],
+    ["/docs", "https://recordish.kmsi.me/docs/"],
+    ["/faq", "https://recordish.kmsi.me/faq/"],
+    ["/report", "https://recordish.kmsi.me/report/"],
+  ];
+
+  for (const [path, canonical] of routeCanonicals) {
+    const html = await (await render(path)).text();
+    assert.ok(
+      html.includes(`<link rel="canonical" href="${canonical}"`),
+      `${path} should declare ${canonical} as canonical`,
+    );
+  }
+
+  const home = await (await render()).text();
+  assert.match(home, /type="application\/ld\+json"/i);
+  assert.match(home, /"@type":"WebSite"/);
+  assert.match(home, /"name":"Recordish"/);
+  assert.match(
+    home,
+    /"sameAs":\["https:\/\/github\.com\/ErDreiwen\/recordish"\]/,
+  );
+  assert.match(home, /Recordish<\/strong> is the name/);
+  assert.match(home, /Recordish on(?:(?:<!-- -->)|\s)*GitHub/);
+
+  const [robots, sitemap] = await Promise.all([
+    readFile(new URL("../out/robots.txt", import.meta.url), "utf8"),
+    readFile(new URL("../out/sitemap.xml", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(robots, /User-Agent: \*/i);
+  assert.match(robots, /Allow: \//i);
+  assert.match(
+    robots,
+    /Sitemap: https:\/\/recordish\.kmsi\.me\/sitemap\.xml/i,
+  );
+  assert.match(robots, /Host: https:\/\/recordish\.kmsi\.me/i);
+
+  for (const path of ["", "download/", "docs/", "faq/", "report/"]) {
+    assert.ok(
+      sitemap.includes(`<loc>https://recordish.kmsi.me/${path}</loc>`),
+      `sitemap should include /${path}`,
+    );
+  }
 });

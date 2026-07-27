@@ -1,15 +1,16 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { LETTER_ART_SOURCE } from "../links";
 import { RELEASE } from "../release";
+import { createPageMetadata } from "../site-config";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Docs",
   description:
-    "Install record-ish, get FFmpeg behaving, and fix the usual Forge 1.8.9 nonsense without the corporate waffle.",
-};
+    "Install Recordish, configure FFmpeg, and fix the usual Forge 1.8.9 recording problems without the corporate waffle.",
+  path: "/docs/",
+});
 
 export default function DocsPage() {
   return (

@@ -1,5 +1,8 @@
 # Recordish for Forge 1.8.9
 
+[Website, downloads, and docs](https://recordish.kmsi.me/) |
+[Report a Recordish issue](https://github.com/ErDreiwen/recordish/issues/new)
+
 This is the Forge 1.8.9 port of
 [Record-able](https://modrinth.com/mod/record-able), an in-game recorder that
 writes standard video files with game audio, optional microphone audio,

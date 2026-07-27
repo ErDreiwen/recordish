@@ -1,13 +1,14 @@
-import type { Metadata } from "next";
+import { createPageMetadata } from "../site-config";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 import { ReportBuilder } from "./report-builder";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Report Center",
   description:
-    "Build a useful record-ish report or find official support for the original Record-able mod.",
-};
+    "Build a useful Recordish bug report or find official support for the original Record-able mod.",
+  path: "/report/",
+});
 
 export default function ReportPage() {
   return (

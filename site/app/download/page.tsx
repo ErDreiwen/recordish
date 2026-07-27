@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import {
   NIGHTLY_DOWNLOAD_URL,
@@ -6,14 +5,16 @@ import {
   STABLE_CHECKSUM_URL,
   STABLE_DOWNLOAD_URL,
 } from "../release";
+import { createPageMetadata } from "../site-config";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
 
-export const metadata: Metadata = {
+export const metadata = createPageMetadata({
   title: "Download",
   description:
-    "Download the verified record-ish Forge 1.8.9 JAR, check its requirements, and install it without making a meal of it.",
-};
+    "Download the verified Recordish Forge 1.8.9 JAR and install the unofficial Record-able recording mod port.",
+  path: "/download/",
+});
 
 export default function DownloadPage() {
   const stableDownloadIsLocal = STABLE_DOWNLOAD_URL.startsWith("/");
