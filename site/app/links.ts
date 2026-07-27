@@ -1,6 +1,6 @@
 export const COMMUNITY_DISCORD = "https://discord.gg/YRJrvgverM";
 
-export const PORT_REPOSITORY = "https://github.com/ErDreiwen/record-ish";
+export const PORT_REPOSITORY = "https://github.com/ErDreiwen/recordish";
 
 export const PORT_ISSUES = `${PORT_REPOSITORY}/issues/new`;
 

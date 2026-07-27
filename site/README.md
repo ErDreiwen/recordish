@@ -46,4 +46,4 @@ The production site is a static Next.js export hosted by Vercel at
 `https://recordish.kmsi.me`. Vercel should use `site` as the project root.
 
 The Forge 1.8.9 port is published at
-`https://github.com/ErDreiwen/record-ish`.
+`https://github.com/ErDreiwen/recordish`.

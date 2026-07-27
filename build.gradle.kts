@@ -165,10 +165,10 @@ loom {
     }
     forge {
         pack200Provider.set(dev.architectury.pack200.java.Pack200Adapter())
-        mixinConfig("mixins.recordable.json")
+        mixinConfig("mixins.recordish.json")
     }
     mixin {
-        defaultRefmapName.set("mixins.recordable.refmap.json")
+        defaultRefmapName.set("mixins.recordish.refmap.json")
     }
 }
 
@@ -176,7 +176,7 @@ val generatedBuildInfoDirectory =
     layout.buildDirectory.dir("generated/sources/buildInfo/java/main")
 val generatedBuildInfoFile =
     generatedBuildInfoDirectory.map {
-        it.file("dev/recordable/BuildInfo.java")
+        it.file("dev/recordish/BuildInfo.java")
     }
 val generateBuildInfo by tasks.registering {
     description = "Generates compile-time version metadata."
@@ -187,7 +187,7 @@ val generateBuildInfo by tasks.registering {
         output.parentFile.mkdirs()
         output.writeText(
             """
-            package dev.recordable;
+            package dev.recordish;
 
             public final class BuildInfo {
                 public static final String VERSION = "$runtimeVersion";
@@ -259,13 +259,15 @@ tasks.register<JavaExec>("runClientCompat") {
     })
 }
 
-val smokeFfmpeg = providers.gradleProperty("recordableSmokeFfmpeg")
+val smokeFfmpeg =
+    providers.gradleProperty("recordishSmokeFfmpeg")
+        .orElse(providers.gradleProperty("recordableSmokeFfmpeg"))
 tasks.register<JavaExec>("pipelineSmokeTest") {
     group = "verification"
-    description = "Runs the Record-able raw-video and audio finalization smoke test"
+    description = "Runs the Recordish raw-video and audio finalization smoke test"
     dependsOn("testClasses")
     classpath = sourceSets.test.get().runtimeClasspath
-    mainClass.set("dev.recordable.RecordingPipelineSmoke")
+    mainClass.set("dev.recordish.RecordingPipelineSmoke")
     args(
         smokeFfmpeg.orElse("").get(),
         layout.buildDirectory.dir("pipeline-smoke").get().asFile.absolutePath
@@ -276,7 +278,7 @@ tasks.register<JavaExec>("pipelineSmokeTest") {
     doFirst {
         if (!smokeFfmpeg.isPresent) {
             throw GradleException(
-                "Pass -PrecordableSmokeFfmpeg=<absolute path to ffmpeg>."
+                "Pass -PrecordishSmokeFfmpeg=<absolute path to ffmpeg>."
             )
         }
     }
@@ -290,7 +292,7 @@ tasks.register<JavaExec>("ffmpegInstallerSmokeTest") {
         "Downloads, verifies, stages, publishes, and probes managed FFmpeg"
     dependsOn("testClasses")
     classpath = sourceSets.test.get().runtimeClasspath
-    mainClass.set("dev.recordable.FfmpegInstallerSmoke")
+    mainClass.set("dev.recordish.FfmpegInstallerSmoke")
     args(
         ffmpegInstallerSmokeRoot
             .map { it.dir("bin") }
@@ -306,33 +308,54 @@ tasks.register<JavaExec>("ffmpegInstallerSmokeTest") {
     }
 }
 
+val identityMigrationSmokeRoot =
+    layout.buildDirectory.dir("identity-migration-smoke")
+tasks.register<JavaExec>("identityMigrationSmokeTest") {
+    group = "verification"
+    description = "Verifies Record-able settings and data-path compatibility"
+    dependsOn("testClasses")
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.recordish.IdentityMigrationSmoke")
+    args(identityMigrationSmokeRoot.get().asFile.absolutePath)
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    })
+    doFirst {
+        project.delete(identityMigrationSmokeRoot)
+    }
+}
+
+tasks.check {
+    dependsOn("identityMigrationSmokeTest")
+}
+
 tasks.withType<Jar>().configureEach {
     archiveBaseName.set(modid)
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
     from("LICENSE") {
         into("META-INF")
-        rename { "LICENSE-recordable.txt" }
+        rename { "LICENSE-recordish.txt" }
     }
     from("UPSTREAM.md") {
         into("META-INF")
-        rename { "UPSTREAM-recordable.md" }
+        rename { "UPSTREAM-recordish.md" }
     }
     manifest.attributes(
-        "Implementation-Title" to "Record-able",
+        "Implementation-Title" to "Recordish",
         "Implementation-Version" to project.version,
-        "Implementation-Vendor" to "Record-able contributors",
+        "Implementation-Vendor" to "Recordish contributors",
         "FMLCorePluginContainsFMLMod" to "true",
         "ForceLoadAsMod" to "true",
         "TweakClass" to "org.spongepowered.asm.launch.MixinTweaker",
-        "MixinConfigs" to "mixins.recordable.json"
+        "MixinConfigs" to "mixins.recordish.json"
     )
 }
 
 tasks.processResources {
     inputs.property("version", project.version)
     inputs.property("mcversion", mcVersion)
-    filesMatching(listOf("mcmod.info", "mixins.recordable.json")) {
+    filesMatching(listOf("mcmod.info", "mixins.recordish.json")) {
         expand(inputs.properties)
     }
 }

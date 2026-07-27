@@ -11,9 +11,9 @@
 | Microphone push-to-talk | `V` |
 
 Replay save, bookmark, censor toggle, and censor editor keys are unbound by
-default. Assign them under **Options > Controls > Record-able**.
+default. Assign them under **Options > Controls > Recordish**.
 
-If another mod already owns a default key, Record-able may choose a free
+If another mod already owns a default key, Recordish may choose a free
 function key instead. The Minecraft Controls screen is always authoritative.
 
 ## Make a recording
@@ -62,10 +62,10 @@ custom output directory.
 | --- | --- |
 | Recordings and manual replays | `recordings` |
 | Automatic clips | `recordings\recording_auto_clips\<trigger>` |
-| Configuration | `config\recordable.json` |
-| Managed FFmpeg | `recordable\ffmpeg\bin` |
+| Configuration | `config\recordish.json` |
+| Managed FFmpeg | `recordish\ffmpeg\bin` |
 
-The default recording name is `recordable-<date>-<time>`. Changing the output
+The default recording name is `recordish-<date>-<time>`. Changing the output
 directory also moves the automatic-clip tree beneath that directory.
 
 Next: [Troubleshooting](TROUBLESHOOTING.md).

@@ -95,7 +95,7 @@ jobs:
           BUILD_VERSION: ${{ steps.build-info.outputs.version }}
         run: |
           runtime_version="${BUILD_VERSION}-forge-1.8.9"
-          expected_name="recordable-${BUILD_VERSION}-forge-1.8.9.jar"
+          expected_name="recordish-${BUILD_VERSION}-forge-1.8.9.jar"
           mapfile -t jars < <(
             find build/libs -maxdepth 1 -type f -name '*.jar' -print | sort
           )
@@ -112,14 +112,24 @@ jobs:
           fi
 
           jar tf "${jar_path}" > "${RUNNER_TEMP}/recordish-jar-entries.txt"
-          grep -Fx "dev/recordable/RecordableMod.class" \
+          grep -Fx "dev/recordish/RecordishMod.class" \
             "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "assets/recordish/icon.png" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "mixins.recordish.json" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          if grep -Eq \
+            "^(dev/recordable/|assets/recordable/|mixins\\.recordable)" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"; then
+            echo "::error::Legacy Recordable internals remain in ${jar_path}."
+            exit 1
+          fi
           unzip -p "${jar_path}" mcmod.info |
             grep -F "\"version\": \"${runtime_version}\""
           unzip -p "${jar_path}" META-INF/MANIFEST.MF |
             tr -d '\r' |
             grep -F "Implementation-Version: ${runtime_version}"
-          javap -verbose -classpath "${jar_path}" dev.recordable.RecordableMod |
+          javap -verbose -classpath "${jar_path}" dev.recordish.RecordishMod |
             grep -F "major version: 52"
 
           echo "path=${jar_path}" >> "${GITHUB_OUTPUT}"
@@ -235,7 +245,7 @@ jobs:
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
             --tag nightly \
-            --file-name recordable-nightly-forge-1.8.9.jar \
+            --file-name recordish-nightly-forge-1.8.9.jar \
             --manifest-name nightly-manifest.json
 
       - name: Update nightly tag and prerelease
@@ -285,8 +295,8 @@ jobs:
           fi
 
           gh release upload nightly \
-            dist/nightly/recordable-nightly-forge-1.8.9.jar \
-            dist/nightly/recordable-nightly-forge-1.8.9.jar.sha256 \
+            dist/nightly/recordish-nightly-forge-1.8.9.jar \
+            dist/nightly/recordish-nightly-forge-1.8.9.jar.sha256 \
             dist/nightly/nightly-manifest.json \
             --clobber
 

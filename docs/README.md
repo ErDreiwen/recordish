@@ -6,7 +6,7 @@ microphone audio, instant replays, and automatic clips from inside the game.
 
 ## Start here
 
-- [Install Record-able and FFmpeg](INSTALLATION.md)
+- [Install Recordish and FFmpeg](INSTALLATION.md)
 - [Record, pause, save replays, and find videos](USAGE.md)
 - [Fix common problems](TROUBLESHOOTING.md)
 - [Frequently asked questions](FAQ.md)

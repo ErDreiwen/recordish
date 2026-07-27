@@ -143,8 +143,8 @@ async function main() {
   const fileName = safeOutputName(
     options["file-name"] ??
       (channel === "stable"
-        ? `recordable-${version}-forge-1.8.9.jar`
-        : "recordable-nightly-forge-1.8.9.jar"),
+        ? `recordish-${version}-forge-1.8.9.jar`
+        : "recordish-nightly-forge-1.8.9.jar"),
     "JAR output name",
     ".jar",
   );

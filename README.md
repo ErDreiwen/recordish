@@ -1,4 +1,4 @@
-# Record-able for Forge 1.8.9
+# Recordish for Forge 1.8.9
 
 This is the Forge 1.8.9 port of
 [Record-able](https://modrinth.com/mod/record-able), an in-game recorder that
@@ -34,19 +34,23 @@ The original MIT license and author attribution are retained.
 ## Install and record
 
 1. Install Forge 1.8.9 (`11.15.1.2318`).
-2. Put the downloaded `recordable-<version>-forge-1.8.9.jar` in the instance's
+2. Put the downloaded `recordish-<version>-forge-1.8.9.jar` in the instance's
    `mods` folder.
-3. Launch Minecraft. If FFmpeg is missing, Record-able opens a first-run setup
+3. Launch Minecraft. If FFmpeg is missing, Recordish opens a first-run setup
    prompt. Review the source and destination, then use **Download FFmpeg** on
    the dedicated progress screen. Nothing is downloaded without that explicit
    click. A custom FFmpeg executable can be selected instead.
 4. Join a world or server and press `-` to start or stop recording.
 
+When upgrading from a `recordable-*.jar`, remove the old JAR first. Recordish
+imports `config/recordable.json` automatically and keeps existing managed
+FFmpeg, watermark, replay-recovery, and thumbnail data visible.
+
 Recordings go to the instance's `recordings` folder by default. The output
 folder is configurable. Auto-record-on-world-join is enabled by default with a
 two-second delay and can be disabled from the Recording settings.
 
-The Record-able button on the title screen opens the V1-0.09-style video
+The Recordish button on the title screen opens the V1-0.09-style video
 collection. Its **Settings** button opens the scrollable, searchable settings
 surface, with the modern theme, performance, streamer-mode, storage, FFmpeg,
 and capture-diagnostics screens adapted to native 1.8.9 controls.
@@ -71,13 +75,13 @@ instead of continuously writing full-resolution raw frames.
 
 ## Lunar Launcher
 
-Record-able works when Lunar Launcher starts a normal **Vanilla/Forge** or
+Recordish works when Lunar Launcher starts a normal **Vanilla/Forge** or
 custom Forge 1.8.9 profile whose `mods` directory is passed to Forge.
 
 Lunar's branded Forge/Ichor module currently filters arbitrary external Forge
-JARs before Forge scans for mods. The launcher may list Record-able as enabled,
+JARs before Forge scans for mods. The launcher may list Recordish as enabled,
 but that runtime does not put the JAR on its classpath. This happens before any
-Record-able code or mixin runs, so it cannot be fixed as an ordinary mod
+Recordish code or mixin runs, so it cannot be fixed as an ordinary mod
 compatibility conflict. Stabilize and test the port with the Vanilla/Forge
 profile first.
 
@@ -123,7 +127,7 @@ An FFmpeg-backed pipeline smoke test is also included:
 
 ```powershell
 .\gradlew.bat pipelineSmokeTest `
-  -PrecordableSmokeFfmpeg="C:\path\to\ffmpeg.exe"
+  -PrecordishSmokeFfmpeg="C:\path\to\ffmpeg.exe"
 ```
 
 The opt-in installer smoke test performs the real platform download into a

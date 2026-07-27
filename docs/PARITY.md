@@ -25,7 +25,7 @@ the modern Fabric and Minecraft APIs.
 | Watermarks, censors, and filters | Ported | Final-frame rendering plus replay-safe software censor baking |
 | Settings and themes | Adapted | V1-0.09 continuous-scroll, searchable settings composition plus Classic, VHS Retro, Cinema, Neon Synthwave, and Minimal themes; panels, controls, scanlines, grain, glitches, and vignette use legacy-safe rendering |
 | Video collection and metadata | Adapted | V1-0.09 responsive toolbar and 62-pixel entries with thumbnails, sorting, recordings/clips views, metadata, in-game player handoff, sharing, open, protect, and confirmed delete actions |
-| Title-screen entry point | Adapted | The Record-able home control opens the video collection and preserves settings navigation |
+| Title-screen entry point | Adapted | The Recordish home control opens the video collection and preserves settings navigation |
 | First-run FFmpeg setup | Adapted | V1-0.09 welcome and scrollable download compositions with explicit consent, source/destination disclosure, progress and verification states, retry, diagnostics, custom-path fallback, and platform guidance |
 | Auxiliary settings screens | Adapted | Theme, performance, streamer-mode, storage, export, audio-help, and capture-diagnostics compositions use native 1.8.9 screens and input dispatch |
 | Storage management | Ported | Usage stats, protected recordings, cleanup rules, manual cleanup, and recompression behind the V1-0.09-style screen |
@@ -60,7 +60,7 @@ pipeline smoke tests with FFprobe inspection.
 The final desktop pass was also exercised in the installed Prism Java 8
 client:
 
-- The exact installed JAR loaded as a Forge mod, both Record-able mixins
+- The exact installed JAR loaded as a Forge mod, both Recordish mixins
   applied, and the direct OpenAL loopback route initialized.
 - The title-screen button, video collection, settings composition, scrolling,
   tooltips, and FFmpeg states were visually compared at the same 870x519

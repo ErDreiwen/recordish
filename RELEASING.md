@@ -21,7 +21,7 @@ ensures a build is stamped from the workflow's exact version even if a different
 branch is checked out. The final stable filename is:
 
 ```text
-recordable-<version>-forge-1.8.9.jar
+recordish-<version>-forge-1.8.9.jar
 ```
 
 Do not edit a Java version constant, the website release data, a checksum, or a
@@ -91,8 +91,8 @@ packaging and again immediately before it mutates the dedicated moving
 `nightly` tag through the GitHub API. Its public assets keep fixed names:
 
 ```text
-recordable-nightly-forge-1.8.9.jar
-recordable-nightly-forge-1.8.9.jar.sha256
+recordish-nightly-forge-1.8.9.jar
+recordish-nightly-forge-1.8.9.jar.sha256
 nightly-manifest.json
 ```
 
@@ -160,11 +160,11 @@ publishing anything:
 
 ```powershell
 node scripts/package-release.mjs `
-  --jar build/libs/recordable-1.0.0-forge-1.8.9.jar `
+  --jar build/libs/recordish-1.0.0-forge-1.8.9.jar `
   --version 1.0.0 `
   --channel stable `
   --output-dir build/release-package `
-  --repository ErDreiwen/record-ish `
+  --repository ErDreiwen/recordish `
   --commit 0b05278d90d3568011258a9826484ba3abee5363
 ```
 

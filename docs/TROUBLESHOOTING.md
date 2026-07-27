@@ -3,16 +3,16 @@
 ## The mod does not appear
 
 - Confirm the instance is Minecraft `1.8.9` with Forge `11.15.1.2318`.
-- Remove duplicate or older Record-able JARs from the profile.
+- Remove duplicate or older Recordish JARs from the profile.
 - Confirm the JAR is in this instance's game-folder `mods` directory.
 - Run the game with Java 8.
 - In Lunar Launcher, use **Vanilla/Forge**. The branded Lunar/Ichor runtime
-  filters arbitrary external Forge JARs before Record-able can start.
+  filters arbitrary external Forge JARs before Recordish can start.
 
 On a successful load, `logs\latest.log` contains:
 
 ```text
-Record-able Forge 1.8.9 initialized.
+Recordish Forge 1.8.9 initialized.
 ```
 
 ## FFmpeg is missing or the download fails
@@ -23,7 +23,7 @@ security software allows the displayed download host.
 
 For a manual install, copy the full path to `ffmpeg.exe`, use
 **Paste FFmpeg Path**, and then **Test FFmpeg**. The test report lists every
-path Record-able tried.
+path Recordish tried.
 
 ## Recording will not start
 
@@ -33,7 +33,7 @@ path Record-able tried.
 - Check the in-game chat message and `logs\latest.log` for the exact failure.
 - Free disk space. Recording is blocked when configured safety limits are
   reached; the default minimum is 500 MB free.
-- Check **Options > Controls > Record-able** in case a key conflict changed
+- Check **Options > Controls > Recordish** in case a key conflict changed
   the default binding.
 
 Auto-record is on by default. If the recording overlay is already visible,
@@ -49,7 +49,7 @@ mismatch:
 3. Restart the instance and run Capture Test again.
 4. Update the graphics driver if every capture mode remains black.
 
-Record-able automatically rotates through multiple framebuffer readback
+Recordish automatically rotates through multiple framebuffer readback
 methods, so let the test finish before changing settings.
 
 ## Game audio or microphone audio is missing

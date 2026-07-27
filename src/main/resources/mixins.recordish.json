@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.7.11",
+  "package": "dev.recordish.mixin",
+  "refmap": "mixins.recordish.refmap.json",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "client": [
+    "MinecraftMixin",
+    "LibraryLWJGLOpenALMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,15 +1,18 @@
 [
   {
-    "modid": "recordable",
-    "name": "Record-able",
-    "description": "In-game video, game-audio and microphone recording for Minecraft 1.8.9.",
+    "modid": "recordish",
+    "name": "Recordish",
+    "description": "In-game video, game-audio and microphone recording for Minecraft Forge 1.8.9.",
     "version": "${version}",
     "mcversion": "1.8.9",
-    "url": "https://modrinth.com/mod/record-able",
+    "url": "https://recordish.kmsi.me",
     "updateUrl": "",
-    "authorList": ["Minewind's Jo Eusebe", "Forge 1.8.9 port contributors"],
+    "authorList": [
+      "Minewind's Jo Eusebe",
+      "Forge 1.8.9 port contributors"
+    ],
     "credits": "Original Record-able by Jo Eusebe. Ported under the MIT License.",
-    "logoFile": "assets/recordable/icon.png",
+    "logoFile": "assets/recordish/icon.png",
     "screenshots": [],
     "dependencies": []
   }

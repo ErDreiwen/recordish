@@ -195,21 +195,31 @@ jobs:
           fi
 
           jar_path="${jars[0]}"
-          expected_name="recordable-${RELEASE_VERSION}-forge-1.8.9.jar"
+          expected_name="recordish-${RELEASE_VERSION}-forge-1.8.9.jar"
           if [[ "$(basename "${jar_path}")" != "${expected_name}" ]]; then
             echo "::error::Expected ${expected_name}, got $(basename "${jar_path}")."
             exit 1
           fi
 
           jar tf "${jar_path}" > "${RUNNER_TEMP}/recordish-jar-entries.txt"
-          grep -Fx "dev/recordable/RecordableMod.class" \
+          grep -Fx "dev/recordish/RecordishMod.class" \
             "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "assets/recordish/icon.png" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          grep -Fx "mixins.recordish.json" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"
+          if grep -Eq \
+            "^(dev/recordable/|assets/recordable/|mixins\\.recordable)" \
+            "${RUNNER_TEMP}/recordish-jar-entries.txt"; then
+            echo "::error::Legacy Recordable internals remain in ${jar_path}."
+            exit 1
+          fi
           unzip -p "${jar_path}" mcmod.info |
             grep -F "\"version\": \"${runtime_version}\""
           unzip -p "${jar_path}" META-INF/MANIFEST.MF |
             tr -d '\r' |
             grep -F "Implementation-Version: ${runtime_version}"
-          javap -verbose -classpath "${jar_path}" dev.recordable.RecordableMod |
+          javap -verbose -classpath "${jar_path}" dev.recordish.RecordishMod |
             grep -F "major version: 52"
 
           node scripts/package-release.mjs \

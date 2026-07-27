@@ -4,13 +4,15 @@
 
 1. Create or select a Minecraft `1.8.9` instance.
 2. Install Forge `11.15.1.2318`.
-3. Put `recordable-<version>-forge-1.8.9.jar` in that instance's `mods` folder.
+3. Put `recordish-<version>-forge-1.8.9.jar` in that instance's `mods` folder.
 4. Start the game with Java 8.
 
 `<version>` is the stable version printed on the download page and in the
-GitHub Release, for example `1.1.0`. Keep only one Record-able JAR in the
-profile. The title screen should show a small clapperboard button after a
-successful load.
+GitHub Release, for example `1.1.0`. Keep only one Recordish JAR in the
+profile. Remove any older `recordable-*.jar` first; Forge treats it as a
+different mod and loading both would register two capture stacks. Recordish
+imports the legacy config and reuses existing managed data. The title screen
+should show a small clapperboard button after a successful load.
 
 ### Prism Launcher
 
@@ -34,13 +36,13 @@ the JAR to the profile's mods directory. On Windows, the usual port profile is:
 
 Do not select the branded **Lunar** runtime for this mod. That runtime can list
 an external JAR as enabled while filtering it before Forge scans the profile.
-This is a launcher classpath restriction, not a Record-able setting.
+This is a launcher classpath restriction, not a Recordish setting.
 
 ## Install FFmpeg
 
 FFmpeg is required to create playable video files.
 
-On the first launch without FFmpeg, Record-able opens a setup prompt:
+On the first launch without FFmpeg, Recordish opens a setup prompt:
 
 1. Choose **Download FFmpeg**.
 2. Review the displayed download source and destination.
@@ -52,14 +54,14 @@ mod verifies and installs `ffmpeg.exe` and `ffprobe.exe` inside the current
 instance:
 
 ```text
-<game folder>\recordable\ffmpeg\bin
+<game folder>\recordish\ffmpeg\bin
 ```
 
 Nothing is downloaded merely by opening the setup screen.
 
 ### Use an existing FFmpeg
 
-Open Record-able settings with `F9`, search for `FFmpeg`, and open the FFmpeg
+Open Recordish settings with `F9`, search for `FFmpeg`, and open the FFmpeg
 setup screen. Copy the full path to `ffmpeg.exe`, choose
 **Paste FFmpeg Path**, then choose **Test FFmpeg**. Keeping `ffprobe.exe` next
 to it is recommended for gallery metadata and diagnostics.

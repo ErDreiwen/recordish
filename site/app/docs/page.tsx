@@ -121,13 +121,13 @@ export default function DocsPage() {
               <div>
                 <dt>Configuration</dt>
                 <dd>
-                  <code>config\recordable.json</code>
+                  <code>config\recordish.json</code>
                 </dd>
               </div>
               <div>
                 <dt>Managed FFmpeg</dt>
                 <dd>
-                  <code>recordable\ffmpeg\bin</code>
+                  <code>recordish\ffmpeg\bin</code>
                 </dd>
               </div>
             </dl>
@@ -178,7 +178,7 @@ export default function DocsPage() {
             <p>
               Confirm Minecraft, Forge, and Java versions; remove duplicate
               JARs; and check <code>logs\latest.log</code> for{" "}
-              <code>Record-able Forge 1.8.9 initialized.</code>
+              <code>Recordish Forge 1.8.9 initialized.</code>
             </p>
             <h3>Recording will not start</h3>
             <p>

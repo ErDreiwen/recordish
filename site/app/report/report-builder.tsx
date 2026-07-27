@@ -209,7 +209,7 @@ function slugFor(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48);
-  return slug || "recordable-report";
+  return slug || "recordish-report";
 }
 
 export function ReportBuilder() {

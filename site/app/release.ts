@@ -121,4 +121,4 @@ export const RELEASE = Object.freeze({
 export const STABLE_DOWNLOAD_URL = RELEASE.downloadUrl;
 export const STABLE_CHECKSUM_URL = RELEASE.checksumUrl;
 export const NIGHTLY_DOWNLOAD_URL =
-  "https://github.com/ErDreiwen/record-ish/releases/download/nightly/recordable-nightly-forge-1.8.9.jar";
+  "https://github.com/ErDreiwen/recordish/releases/download/nightly/recordish-nightly-forge-1.8.9.jar";

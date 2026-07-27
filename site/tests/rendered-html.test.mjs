@@ -11,7 +11,7 @@ const releaseManifest = JSON.parse(
 );
 const expectedChecksum = releaseManifest.sha256.toUpperCase();
 const nightlyDownloadUrl =
-  "https://github.com/ErDreiwen/record-ish/releases/download/nightly/recordable-nightly-forge-1.8.9.jar";
+  "https://github.com/ErDreiwen/recordish/releases/download/nightly/recordish-nightly-forge-1.8.9.jar";
 
 function formattedFileSize(bytes) {
   const mebibyte = 1024 * 1024;
@@ -70,7 +70,7 @@ test("server-renders the unofficial record-ish homepage", async () => {
   assert.match(html, /unofficial as it gets and never claiming otherwise/i);
   assert.match(html, /Vanilla\/Forge/);
   assert.doesNotMatch(html, new RegExp(expectedChecksum));
-  assert.match(html, /https:\/\/github\.com\/ErDreiwen\/record-ish/);
+  assert.match(html, /https:\/\/github\.com\/ErDreiwen\/recordish/);
   assert.match(html, /Baguette\?/);
   assert.match(
     html,
@@ -116,7 +116,7 @@ test("server-renders the local report desk", async () => {
   assert.match(html, /Save \.md/);
   assert.match(
     html,
-    /https:\/\/github\.com\/ErDreiwen\/record-ish\/issues\/new/,
+    /https:\/\/github\.com\/ErDreiwen\/recordish\/issues\/new/,
   );
   assert.match(html, /Nothing gets uploaded here/);
   assert.match(html, /removed private information/);
@@ -172,7 +172,7 @@ test("server-renders one verified, pissy download page", async () => {
   assert.match(html, /https:\/\/modrinth\.com\/mod\/record-able/);
   assert.match(
     html,
-    /https:\/\/github\.com\/ErDreiwen\/record-ish/,
+    /https:\/\/github\.com\/ErDreiwen\/recordish/,
   );
   assert.match(html, /MIT licensed/);
 });
@@ -196,7 +196,7 @@ test("keeps the technical report and sends original-mod complaints upstream", as
   assert.match(builder, /COMMUNITY_DISCORD/);
   assert.match(builder, /PORT_ISSUES/);
   assert.match(links, /https:\/\/discord\.gg\/YRJrvgverM/);
-  assert.match(links, /https:\/\/github\.com\/ErDreiwen\/record-ish/);
+  assert.match(links, /https:\/\/github\.com\/ErDreiwen\/recordish/);
   assert.match(builder, /https:\/\/modrinth\.com\/mod\/record-able/);
   assert.match(builder, /report-builder-upstream/);
   assert.match(css, /\.report-builder-upstream/);
@@ -266,6 +266,7 @@ test("validates release metadata and any bundled stable JAR", async () => {
   assert.ok(releaseManifest.fileSizeBytes > 0);
   assert.ok(!Number.isNaN(Date.parse(releaseManifest.publishedAt)));
   assert.ok(releaseManifest.fileName.endsWith(".jar"));
+  assert.ok(releaseManifest.fileName.startsWith("recordish-"));
   assert.ok(
     releaseManifest.downloadUrl.endsWith("/" + releaseManifest.fileName),
   );
@@ -327,7 +328,7 @@ test("validates release metadata and any bundled stable JAR", async () => {
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
   assert.doesNotMatch(layout, /Starter Project|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.match(packageJson, /"name": "recordable-forge-site"/);
+  assert.match(packageJson, /"name": "recordish-site"/);
   for (const currentSource of [page, docs, windowShell]) {
     assert.doesNotMatch(currentSource, /\/downloads\/.*\.jar/);
     assert.match(currentSource, /\/download/);

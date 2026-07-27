@@ -27,6 +27,9 @@ logs
 *.zip
 forge-*-changelog.txt
 record-able-*-sources.jar
+recordish-*-sources.jar
 recordings
 clips
+config/recordish.json
 config/recordable.json
+site/.local-dev.*.log
