@@ -24,6 +24,3 @@ This fork requires:
 Prism Launcher and normal Forge installations are supported. Lunar Launcher
 works only through its **Vanilla/Forge** profile; its branded Lunar/Ichor
 runtime does not load arbitrary external Forge mods.
-
-For implementation and verification details, see
-[the parity record](PARITY.md).

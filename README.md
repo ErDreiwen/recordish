@@ -9,7 +9,7 @@ writes standard video files with game audio, optional microphone audio,
 instant replay, automatic clips, overlays, filters, watermarks, and privacy
 censors.
 
-The exact parity reference is the official `V1-0.09-modern` source archive
+The port follows the official `V1-0.09-modern` source archive
 published with [Modrinth version `Tklmbazn`](https://modrinth.com/mod/record-able/version/Tklmbazn),
 file `gHWYQl3T`, for Fabric on Minecraft 26.2. The implementation translates
 that release's desktop behavior and visual compositions to Minecraft 1.8.9
@@ -31,7 +31,6 @@ The original MIT license and author attribution are retained.
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Original and Community port FAQ](docs/FAQ.md)
 - [Reporting a problem](docs/REPORTING.md)
-- [Desktop parity and verification](docs/PARITY.md)
 - [Release process](docs/RELEASING.md)
 
 ## Install and record
@@ -108,11 +107,6 @@ This branch replaces them with Forge events, Java 8 `GuiScreen` controls, the
 interaction order, scrolling, theme presets, and desktop recording behavior.
 Android/Pojav-only behavior is outside this desktop Forge target.
 
-The V1-0.09 desktop parity build has completed a fresh Java 8 client,
-pixel-level title/gallery/settings review, asynchronous FFmpeg interaction
-check, and real in-world recording with game audio and pause/resume. The exact
-verification record is kept in [docs/PARITY.md](docs/PARITY.md).
-
 ## Development
 
 Gradle requires JDK 17 or newer to run this build; CI uses a JDK 17 host.
@@ -145,5 +139,5 @@ Stable Semantic Versions and every-main nightlies are built by GitHub Actions;
 the JAR, checksum, and release manifest are published together. See
 [docs/RELEASING.md](docs/RELEASING.md) before changing version metadata.
 
-See [docs/PARITY.md](docs/PARITY.md) for the Forge adaptation and verification
-matrix, and [UPSTREAM.md](UPSTREAM.md) for provenance.
+See [UPSTREAM.md](UPSTREAM.md) for provenance and the authoritative upstream
+baseline.
