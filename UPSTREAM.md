@@ -24,6 +24,5 @@ The earlier `V1-0.08-legacy` release (`5vxgtdx7`), source-upload commit
 `4c375d7`, and repository head `1df91b4` document the initial fork ancestry.
 They are not the current parity baseline.
 
-Minecraft 1.8.9-specific replacements are documented in
-`docs/PARITY.md`. Android/Pojav-only behavior is not applicable to this
-desktop Forge runtime, while desktop equivalents remain in scope.
+Android/Pojav-only behavior is not applicable to this desktop Forge runtime;
+the official desktop release remains the behavioral reference.
