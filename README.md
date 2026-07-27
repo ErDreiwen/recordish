@@ -25,7 +25,6 @@ The original MIT license and author attribution are retained.
 
 ## Documentation
 
-- [Documentation hub](docs/README.md)
 - [Installation and FFmpeg](docs/INSTALLATION.md)
 - [Recording, replay, and BedWars clips](docs/USAGE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

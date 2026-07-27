@@ -13,9 +13,7 @@
       "force-tag-creation": true,
       "exclude-paths": [
         ".github",
-        "docs",
-        "legal",
-        "site"
+        "docs"
       ]
     }
   }
