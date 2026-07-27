@@ -21,5 +21,5 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - In-game recording, replay buffering, game-audio and microphone capture.
 - Managed FFmpeg setup, diagnostics, recovery, and the record-ish website.
 
-[1.1.0]: https://github.com/ErDreiwen/recordish/compare/0b05278d90d3568011258a9826484ba3abee5363...HEAD
+[1.1.0]: https://github.com/ErDreiwen/recordish/compare/0b05278d90d3568011258a9826484ba3abee5363...v1.1.0
 [1.0.0]: https://github.com/ErDreiwen/recordish/commit/0b05278d90d3568011258a9826484ba3abee5363
