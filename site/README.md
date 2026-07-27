@@ -21,8 +21,11 @@ npm test
 
 ## Release data and downloads
 
-The repository still contains the bundled `1.0.0` JAR and checksum as a safe
-transition for the currently deployed site. Do not replace them manually.
+The repository contains the verified bundled `1.1.0` Recordish JAR and
+checksum used by the download page. The old `1.0.0` Record-able port
+binary remains at its original URL only as a compatibility alias.
+Regenerate release files through the release tooling; do not replace
+them manually.
 
 The first successful automated stable release publishes its JAR, `.sha256`
 file, and `release-manifest.json` from the same tested build as GitHub Release

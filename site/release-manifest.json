@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
   "channel": "stable",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minecraft": "1.8.9",
   "forge": "11.15.1.2318",
   "java": "8",
-  "fileName": "recordable-1.0.0-forge-1.8.9.jar",
-  "fileSizeBytes": 1765821,
-  "sha256": "00D7E034DDD1E94B4E9A2B5B89C0AD09C7FE9A63E2291D4B3439A69925D6ED71",
-  "downloadUrl": "/downloads/recordable-1.0.0-forge-1.8.9.jar",
-  "checksumUrl": "/downloads/recordable-1.0.0-forge-1.8.9.jar.sha256",
-  "sourceCommit": "0b05278d90d3568011258a9826484ba3abee5363",
-  "publishedAt": "2026-07-26T13:55:34-05:00"
+  "fileName": "recordish-1.1.0-forge-1.8.9.jar",
+  "fileSizeBytes": 1721021,
+  "sha256": "B28F27955ADFF93BF200264CEB88527EF6979E39B9DCFA6E7ECF49621A4DDBA4",
+  "downloadUrl": "/downloads/recordish-1.1.0-forge-1.8.9.jar",
+  "checksumUrl": "/downloads/recordish-1.1.0-forge-1.8.9.jar.sha256",
+  "sourceCommit": "7efac6a2255d0f25b670bf2ee3121104fb16bf75",
+  "publishedAt": "2026-07-27T02:14:17.406Z"
 }
