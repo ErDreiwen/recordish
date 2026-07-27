@@ -11,7 +11,10 @@
       "draft": true,
       "force-tag-creation": true,
       "exclude-paths": [
-        "docs/**"
+        ".github/**",
+        "docs/**",
+        "legal/**",
+        "site/**"
       ]
     }
   }
