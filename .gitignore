@@ -33,3 +33,24 @@ clips
 config/recordish.json
 config/recordable.json
 site/.local-dev.*.log
+
+# local secrets and signing material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+secrets.json
+*credentials*
+*secrets*
+
+# local diagnostics and crash output
+*.log
+*.crash
+*.dmp
+hs_err_pid*
