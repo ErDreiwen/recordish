@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LETTER_ART_SOURCE } from "../links";
 import { RELEASE } from "../release";
 import { SiteFooter } from "../site-footer";
 import { WindowShell } from "../window-shell";
@@ -37,6 +38,7 @@ export default function DocsPage() {
           <a href="#ffmpeg">FFmpeg</a>
           <a href="#lunar">Lunar</a>
           <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#credits">Credits</a>
         </nav>
 
         <div className="docs-grid">
@@ -204,6 +206,21 @@ export default function DocsPage() {
             </span>
           </section>
         </div>
+
+        <aside className="docs-credit" id="credits">
+          <strong>Letter artwork</strong>
+          <span>
+            The record-ish display lettering adapts Patrick Santos&apos;{" "}
+            <a
+              href={LETTER_ART_SOURCE}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Orange Rounded Cartoon Text Effect on Vecteezy.com
+            </a>
+            . Recoloured and recomposed here; still their artwork.
+          </span>
+        </aside>
 
         <div className="docs-end">
           <Link className="button" href="/">

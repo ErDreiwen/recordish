@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   BAGUETTE_MAP,
   COMMUNITY_DISCORD,
@@ -26,6 +27,9 @@ export function SiteFooter() {
         <a href={COMMUNITY_DISCORD} rel="noreferrer" target="_blank">
           Discord
         </a>
+        <Link href="/docs#credits">
+          Credits
+        </Link>
       </nav>
     </footer>
   );

@@ -221,8 +221,10 @@ summary:focus-visible {
 .brand-lockup {
   position: relative;
   display: inline-grid;
-  max-width: 100%;
   isolation: isolate;
+  width: 82%;
+  max-width: 35rem;
+  transform: translateX(-3rem);
 }
 
 .brand-stack {
@@ -230,112 +232,76 @@ summary:focus-visible {
   display: inline-grid;
   max-width: 100%;
   justify-items: start;
+  width: 100%;
 }
 
 .hero .brand-logo {
   position: relative;
   z-index: 0;
-  display: flex;
-  max-width: none;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1784 / 350;
   margin: 0;
-  align-items: baseline;
-  color: #2273ee;
-  font-family: "Arial Black", Impact, Haettenschweiler, sans-serif;
-  font-size: clamp(3.2rem, 8.8vw, 7.8rem);
-  font-weight: 900;
-  line-height: 0.79;
-  letter-spacing: -0.085em;
-  white-space: nowrap;
-  text-transform: lowercase;
+  font-size: clamp(2.6rem, 7.2vw, 6.4rem);
+  isolation: isolate;
   transform: rotate(-1.25deg);
   transform-origin: left bottom;
-  animation: brand-kick 4.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  animation: brand-kick 6.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
 
-.hero .brand-logo::before {
+/*
+ * Display letter art by Patrick Santos via Vecteezy:
+ * https://www.vecteezy.com/vector-art/940848-orange-rounded-cartoon-text-effect
+ * Visible credit: /docs/#credits. Full notice: /THIRD_PARTY_NOTICES.md.
+ */
+.brand-art {
   position: absolute;
-  z-index: -1;
-  right: -0.2em;
-  bottom: -0.02em;
-  left: -0.03em;
-  height: 0.23em;
+  inset: 0;
+  display: block;
+  background: url("/brand/recordish-wordmark.png") center / contain no-repeat;
+  filter:
+    drop-shadow(0.025em 0.035em 0 #ffd45a)
+    drop-shadow(0.075em 0.095em 0 #4a2034);
+  transform: translateZ(0);
+}
+
+.brand-art::after {
+  position: absolute;
+  inset: 0;
   content: "";
-  border: 2px solid var(--ink);
-  background: linear-gradient(90deg, #b7ec35, #68d7c4);
-  transform: skewX(-13deg) rotate(-1deg);
-}
-
-.brand-record,
-.brand-ish {
-  background-size: 180% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: clamp(1.5px, 0.025em, 3px) var(--ink);
-  paint-order: stroke fill;
-  filter:
-    drop-shadow(0.035em 0.045em 0 #fff)
-    drop-shadow(0.075em 0.09em 0 #ffd94c)
-    drop-shadow(0.12em 0.15em 0 #29bddd)
-    drop-shadow(0.16em 0.2em 0 var(--ink));
-  animation: brand-colour-slide 4.8s ease-in-out infinite alternate;
-}
-
-.brand-record {
-  background-image: linear-gradient(
-    96deg,
-    #136df0 0%,
-    #22bff3 38%,
-    #7d3df0 72%,
-    #f046a2 100%
-  );
-}
-
-.brand-dash {
-  margin: 0 -0.01em;
-  color: #ff832b;
-  -webkit-text-stroke: clamp(1.5px, 0.025em, 3px) var(--ink);
-  paint-order: stroke fill;
-  filter:
-    drop-shadow(0.035em 0.045em 0 #fff)
-    drop-shadow(0.075em 0.09em 0 #ffd94c)
-    drop-shadow(0.12em 0.15em 0 #f04d93)
-    drop-shadow(0.16em 0.2em 0 var(--ink));
-}
-
-.brand-ish {
-  background-image: linear-gradient(
-    96deg,
-    #b8f12e 0%,
-    #f2dc2d 38%,
-    #ff812c 70%,
-    #ff3e79 100%
-  );
+  pointer-events: none;
+  background:
+    linear-gradient(
+        105deg,
+        transparent 0 34%,
+        rgba(255, 255, 255, 0.06) 42%,
+        rgba(255, 248, 226, 0.52) 49%,
+        rgba(179, 226, 236, 0.22) 54%,
+        transparent 66%
+      )
+      -42% 0 / 27% 100% no-repeat;
+  -webkit-mask: url("/brand/recordish-wordmark.png") center / contain no-repeat;
+  mask: url("/brand/recordish-wordmark.png") center / contain no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: brand-shine 6.4s ease-in-out infinite;
 }
 
 .brand-credit {
-  margin: 0.85rem 0.25rem 0;
+  margin: 0.5rem 0.15rem 0;
+  padding-left: 2.05rem;
   color: var(--muted);
   font: 700 clamp(0.48rem, 0.75vw, 0.61rem) / 1 var(--mono);
   letter-spacing: 0.16em;
   text-transform: lowercase;
 }
 
-.brand-credit::before {
-  display: inline-block;
-  width: 1.6rem;
-  height: 2px;
-  margin-right: 0.45rem;
-  content: "";
-  vertical-align: middle;
-  background: var(--orange);
-}
 
 .brand-rec {
   position: absolute;
   z-index: 2;
-  top: -0.85rem;
-  right: -0.6rem;
+  top: -0.55rem;
+  right: -0.35rem;
   display: inline-flex;
   gap: 0.3rem;
   align-items: center;
@@ -354,12 +320,12 @@ summary:focus-visible {
   height: 0.42rem;
   border-radius: 50%;
   background: #fff;
-  animation: rec-wink 4.8s steps(1, end) infinite;
+  animation: rec-wink 6.4s steps(1, end) infinite;
 }
 
 .hero-tagline {
   max-width: 650px;
-  margin: 1.35rem 0 0;
+  margin: 1.05rem 0 0;
   color: var(--ink);
   font: 700 clamp(1.2rem, 2.6vw, 1.75rem) / 1.15 var(--serif);
   letter-spacing: -0.025em;
@@ -677,7 +643,7 @@ summary:focus-visible {
 /* Download */
 .download-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.28fr);
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.3fr);
   gap: clamp(1.5rem, 5vw, 4rem);
   align-items: end;
   padding: clamp(2rem, 6vw, 5rem);
@@ -699,32 +665,83 @@ summary:focus-visible {
 }
 
 .release-ticket {
+  position: relative;
+  isolation: isolate;
   display: grid;
-  gap: 0.45rem;
-  padding: 1rem;
+  box-sizing: border-box;
+  width: min(100%, 13.5rem);
+  justify-self: end;
+  gap: 0.5rem;
+  padding: 1.1rem 1.15rem 1rem;
   color: #fff;
-  border: 2px solid #10366f;
+  border: 2px solid #0c2f67;
+  border-top: 5px solid #e86f32;
   background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.24), transparent 42%),
-    var(--blue);
-  box-shadow: 5px 5px 0 rgba(18, 60, 132, 0.18);
-  transform: rotate(1.2deg);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22), transparent 36%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 1px 4px
+    ),
+    linear-gradient(160deg, #3975c8 0%, #275fac 58%, #194583 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    4px 5px 0 rgba(16, 54, 111, 0.18);
+  transform: rotate(0.8deg) translateY(0.2rem);
+}
+
+.release-ticket::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0.35rem;
+  content: "";
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.release-ticket > * {
+  position: relative;
+  z-index: 1;
 }
 
 .release-ticket span,
 .release-ticket small {
-  font-size: 0.58rem;
-  font-weight: 700;
+  font-size: 0.57rem;
+  font-weight: 800;
+  line-height: 1.15;
   letter-spacing: 0.12em;
 }
 
+.release-ticket span {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: #eef6ff;
+}
+
+.release-ticket span::before {
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 auto;
+  content: "";
+  border: 1px solid #713015;
+  border-radius: 50%;
+  background: #ffb14a;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+
 .release-ticket strong {
-  font: 700 clamp(2.4rem, 6vw, 4.4rem) / 0.9 var(--serif);
-  letter-spacing: -0.06em;
+  display: block;
+  font: 700 clamp(2.55rem, 4.8vw, 3.55rem) / 0.86 var(--serif);
+  letter-spacing: -0.075em;
+  white-space: nowrap;
+  text-shadow: 1px 2px 0 rgba(8, 36, 83, 0.3);
 }
 
 .release-ticket small {
-  color: #cce3ff;
+  padding-top: 0.48rem;
+  color: #d8eaff;
+  border-top: 1px solid rgba(255, 255, 255, 0.34);
 }
 
 .download-action {
@@ -1257,6 +1274,32 @@ summary:focus-visible {
   font-size: 0.63rem;
 }
 
+.docs-credit {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: baseline;
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  color: #3d4650;
+  font: 0.72rem/1.5 var(--serif);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  background: #eee7d8;
+}
+
+.docs-credit strong {
+  color: var(--ink);
+  font: 700 0.62rem/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.docs-credit a {
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
 .docs-end {
   display: flex;
   flex-wrap: wrap;
@@ -1439,8 +1482,11 @@ summary:focus-visible {
 
 .report-local-note {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  align-self: end;
   gap: 0.35rem;
-  padding: 0.9rem 0 0.15rem;
+  padding: 0.75rem 0 0.7rem;
   border-top: 7px solid var(--green);
   border-bottom: 1px solid var(--line);
 }
@@ -2070,45 +2116,60 @@ summary:focus-visible {
 
 @keyframes brand-kick {
   0%,
-  82%,
+  64%,
+  76%,
   100% {
     transform: rotate(-1.25deg) translateY(0) scale(1);
   }
 
-  86% {
+  67% {
     transform: rotate(-2deg) translateY(-0.045em) scale(1.015, 0.985);
   }
 
-  90% {
+  70% {
     transform: rotate(-0.55deg) translateY(0.018em) scale(0.992, 1.012);
   }
 
-  94% {
+  73% {
     transform: rotate(-1.25deg) translateY(0) scale(1);
   }
 }
 
-@keyframes brand-colour-slide {
-  from {
-    background-position: 0% 50%;
+@keyframes brand-shine {
+  0%,
+  77%,
+  90%,
+  100% {
+    background-position: -42% 0;
+    opacity: 0;
   }
 
-  to {
-    background-position: 100% 50%;
+  79% {
+    background-position: -42% 0;
+    opacity: 0.1;
+  }
+
+  83% {
+    opacity: 0.34;
+  }
+
+  88% {
+    background-position: 142% 0;
+    opacity: 0;
   }
 }
 
 @keyframes rec-wink {
   0%,
-  84%,
-  89%,
-  94%,
+  90%,
+  93%,
+  96%,
   100% {
     opacity: 1;
   }
 
-  86%,
-  91% {
+  91.5%,
+  94.5% {
     opacity: 0.25;
   }
 }
@@ -2137,7 +2198,9 @@ summary:focus-visible {
   }
 
   .release-ticket {
+    width: min(100%, 13.5rem);
     max-width: 260px;
+    justify-self: start;
   }
 
   .nightly-download {
@@ -2226,18 +2289,17 @@ summary:focus-visible {
 }
 
 @media (max-width: 500px) {
+  .brand-lockup {
+    width: 96%;
+    transform: none;
+  }
+
   .window-controls i:not(.close-control) {
     display: none;
   }
 
   .hero .brand-logo {
     font-size: clamp(2.55rem, 15vw, 4.15rem);
-  }
-
-  .brand-record,
-  .brand-ish,
-  .brand-dash {
-    -webkit-text-stroke-width: 1.5px;
   }
 
   .brand-credit {
@@ -2294,6 +2356,11 @@ summary:focus-visible {
 
   .file-links small {
     grid-column: 2;
+  }
+
+  .docs-credit {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
   }
 
   .site-footer {
@@ -2353,9 +2420,12 @@ summary:focus-visible {
   }
 
   .hero .brand-logo,
-  .brand-record,
-  .brand-ish,
+  .brand-art::after,
   .brand-rec i {
     animation: none !important;
+  }
+
+  .brand-art::after {
+    opacity: 0 !important;
   }
 }

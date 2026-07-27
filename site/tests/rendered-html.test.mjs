@@ -44,6 +44,12 @@ test("server-renders the unofficial record-ish homepage", async () => {
   );
   assert.match(html, /UNOFFICIAL \/ COMMUNITY PORT \/ FORGE 1\.8\.9/);
   assert.match(html, /<h1[^>]*aria-label="record-ish"[^>]*>/i);
+  assert.match(html, /aria-hidden="true"[^>]*class="brand-art"/i);
+  assert.match(html, /class="brand-rec"/i);
+  assert.doesNotMatch(
+    html,
+    /class="(?:brand-record|brand-dash|brand-ish)"/i,
+  );
   assert.match(
     html,
     /class="brand-credit"[^>]*>a Record-able port<\/p>/i,
@@ -71,6 +77,11 @@ test("server-renders the unofficial record-ish homepage", async () => {
     /https:\/\/www\.google\.com\/maps\/search\/\?api=1(?:&|&amp;)query=Pollen\+Bakery\+Kampus\+42\+Aytoun\+Street\+Manchester\+M1\+3GL/,
   );
   assert.match(html, /https:\/\/discord\.gg\/YRJrvgverM/);
+  assert.match(html, /href="\/docs\/?#credits"/);
+  assert.doesNotMatch(html, /https:\/\/www\.vecteezy\.com\/vector-art\//);
+  await access(
+    new URL("../public/brand/recordish-wordmark.png", import.meta.url),
+  );
   assert.match(
     html,
     /property="og:image" content="https:\/\/recordish\.kmsi\.me\/og-record-ish\.png"/,
@@ -225,6 +236,12 @@ test("server-renders concise installation and usage docs", async () => {
   assert.match(html, /Download FFmpeg/);
   assert.match(html, /branded Lunar\/Ichor/);
   assert.match(html, /When it has gone a bit wrong/);
+  assert.match(html, /id="credits"/);
+  assert.match(html, /Patrick Santos/);
+  assert.match(
+    html,
+    /https:\/\/www\.vecteezy\.com\/vector-art\/940848-orange-rounded-cartoon-text-effect/,
+  );
   assert.match(
     html,
     /class="troubleshooting-question-mark"[^>]*>\?<\/span>/,

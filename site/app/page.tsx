@@ -29,15 +29,7 @@ export default function Home() {
                   className="brand-logo"
                   id="hero-title"
                 >
-                  <span aria-hidden="true" className="brand-record">
-                    record
-                  </span>
-                  <span aria-hidden="true" className="brand-dash">
-                    -
-                  </span>
-                  <span aria-hidden="true" className="brand-ish">
-                    ish
-                  </span>
+                  <span aria-hidden="true" className="brand-art" />
                 </h1>
                 <p className="brand-credit">a Record-able port</p>
                 <span aria-hidden="true" className="brand-rec">
