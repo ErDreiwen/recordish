@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  GRADLE_USER_HOME: ${{ runner.temp }}/recordish-gradle-user-home
+  GRADLE_USER_HOME: ${{ github.workspace }}/.recordish-gradle-user-home
 
 jobs:
   mod:
