@@ -143,35 +143,6 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-  site:
-    name: Static website
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: site
-
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-
-      - name: Install locked dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build and test
-        run: npm test
-
   nightly:
     name: Publish rolling nightly
     if: >-
@@ -180,7 +151,6 @@ jobs:
       github.actor != 'github-actions[bot]'
     needs:
       - mod
-      - site
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -237,7 +207,7 @@ jobs:
             exit 1
           fi
 
-          node scripts/package-release.mjs \
+          node .github/release/package-release.mjs \
             --jar "${jars[0]}" \
             --version "${NIGHTLY_VERSION}" \
             --channel nightly \

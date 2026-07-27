@@ -32,7 +32,7 @@ The original MIT license and author attribution are retained.
 - [Original and Community port FAQ](docs/FAQ.md)
 - [Reporting a problem](docs/REPORTING.md)
 - [Desktop parity and verification](docs/PARITY.md)
-- [Release and deployment process](RELEASING.md)
+- [Release process](docs/RELEASING.md)
 
 ## Install and record
 
@@ -143,7 +143,7 @@ publishes the binaries, and probes the published executable:
 
 Stable Semantic Versions and every-main nightlies are built by GitHub Actions;
 the JAR, checksum, and release manifest are published together. See
-[RELEASING.md](RELEASING.md) before changing version or download metadata.
+[docs/RELEASING.md](docs/RELEASING.md) before changing version metadata.
 
 See [docs/PARITY.md](docs/PARITY.md) for the Forge adaptation and verification
 matrix, and [UPSTREAM.md](UPSTREAM.md) for provenance.

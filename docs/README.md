@@ -11,6 +11,7 @@ microphone audio, instant replays, and automatic clips from inside the game.
 - [Fix common problems](TROUBLESHOOTING.md)
 - [Frequently asked questions](FAQ.md)
 - [Report a problem](REPORTING.md)
+- [Release process](RELEASING.md)
 
 ## Compatibility
 
